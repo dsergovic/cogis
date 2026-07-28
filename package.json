@@ -1,0 +1,23 @@
+{
+  "name": "cogis",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cogis — AI Search: Chrome MV3 extension (dev tooling only)",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.32.0",
+    "eslint": "^9.32.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.6.2",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

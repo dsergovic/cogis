@@ -1,0 +1,10 @@
+{
+  "_fixtureNote": "STUB — not captured from a live session. Shape matches NextAuth session JSON commonly returned by GET /api/auth/session. accessToken value is fake and must never be treated as a real secret.",
+  "user": {
+    "id": "user_stub_001",
+    "name": "Stub User",
+    "email": "stub@example.com"
+  },
+  "expires": "2099-01-01T00:00:00.000Z",
+  "accessToken": "stub_access_token_not_real"
+}
