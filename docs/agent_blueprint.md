@@ -6,8 +6,9 @@
 **License:** MIT  
 **Framework:** [Full-Lifecycle Agentic Software Engineering v1.1.0](https://github.com/dsergovic/research/blob/main/docs/Full-Lifecycle%20Agentic%20Software%20Engineering.md)  
 **Phase 0 input:** [`docs/cogis-ai-search-pre-blueprint.md`](./cogis-ai-search-pre-blueprint.md) **v0.2.0** (locked; do not re-litigate)  
-**Status:** Phase 1 blueprint — spikes S1–S6 resolved; ready for Phase 2 hand-off after human merge  
-**Version:** 0.2.0  
+**Status:** Phase 1 blueprint — spikes S1–S6 resolved; ready for Phase 2 hand-off  
+**Version:** 0.2.1  
+**Integration branch:** `dev` (day-to-day working area; feature PRs target `dev`)  
 **Spike findings:** [`docs/spikes/`](./spikes/)
 
 ---
@@ -503,8 +504,8 @@ Spikes are **owned by Human + Perplexity** (framework §3.5 Tier 3). **S1–S6 w
 
 **Global constraints for every milestone**
 
-- Feature branch only; never commit implementation to `main`.  
-- Agent opens PR; **human merges**.  
+- **Branching:** cut feature branches from `dev`; open PRs **to `dev`**. Never commit implementation directly to `dev` or `main`. Do not open milestone PRs to `main`.  
+- Agent opens PR; **human merges** (into `dev`).  
 - Stop-loss: 5 consecutive attempts on one error; milestone budget: **25** total debugging attempts (or human-stated cap). On trip: `agent-stuck/mN-yyyy-mm-dd` + summary.  
 - Note Tier 2 decisions under PR **Choices made**.  
 - No new dependencies without escalation.  
@@ -732,5 +733,6 @@ Operator will provide hand-off prompts.
 
 | Version | Date | Change |
 | --- | --- | --- |
+| 0.2.1 | 2026-07-28 | Integration branch retarget: day-to-day working area is `dev`. Feature branches cut from `dev`; milestone PRs target `dev` (not `main`). Header + global milestone constraints updated. |
 | 0.2.0 | 2026-07-28 | Spikes S1–S6 resolved and folded in (§3.6.1 contract table; §9 marked resolved). Capability labels locked (ChatGPT full-text; others title-match). Click cascade flags locked per platform. §15 collapsed to operator-owned hand-off pointer (no path). M1–M4 no longer gated on open spikes. Residual risk = selector/header drift only. Operator hand-off prompts authored alongside this blueprint as a separate human-only doc. |
 | 0.1.0 | 2026-07-28 | Initial Phase 1 agent blueprint under framework v1.1.0. Compiled from pre-blueprint v0.2.0 plus Phase 1 interview locks: M1 includes ChatGPT Projects; Spaces/Projects inside each platform milestone; click cascade deep-link → prefill → lab home; query UX Enter/Search only with empty clear+hint and in-flight cancel; timeouts 8s/15s; stack HTML/CSS/JS + ESLint + Prettier + vitest; display name Cogis — AI Search; M5 data-only remote selector pack; M6 debug panel + opt-in anonymous ping designed off-by-default; behavioral AC for M1–M6; spikes S1–S6 formalized. Authored in Perplexity Computer session for Phase 1 (no application code). |
