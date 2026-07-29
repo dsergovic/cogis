@@ -94,14 +94,14 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  min-height: 220px;
+  min-height: 260px;
 }
 
 .cogis-group {
   border: 1px solid var(--cogis-line);
   border-radius: var(--cogis-radius);
   background: color-mix(in srgb, var(--cogis-surface) 92%, white);
-  min-height: 120px;
+  min-height: 100px;
   display: flex;
   flex-direction: column;
 }
