@@ -416,19 +416,23 @@ export function normalizeClaudeHit(raw) {
 }
 
 /**
- * Normalize a Claude conversations list response into capped pointers.
+ * Normalize a Claude conversations list response into pointers.
+ * When `max` is omitted, returns all valid pointers (caller title-filters then
+ * caps — required for Claude client-side title-match). Pass `max` only when the
+ * caller already has a server-filtered or intentionally truncated set.
+ *
  * @param {unknown} payload
  * @param {{ max?: number }} [opts]
  * @returns {import('./messaging.js').PointerRecord[]}
  */
 export function normalizeClaudeListResponse(payload, opts = {}) {
-  const max = opts.max ?? MAX_RESULTS_PER_PLATFORM;
+  const max = opts.max;
   const items = extractClaudeConversationItems(payload);
   const pointers = [];
   for (const item of items) {
     const p = normalizeClaudeHit(item);
     if (p) pointers.push(p);
-    if (pointers.length >= max) break;
+    if (typeof max === 'number' && pointers.length >= max) break;
   }
   return pointers;
 }

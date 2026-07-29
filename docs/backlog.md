@@ -42,6 +42,8 @@ Add new rows at the top of the relevant section. Prefer one line + link to PR/is
 | --- | --- | --- | --- |
 | BL-020 | open | **Per-lab collapse/expand toggle** | On each platform **card header** (left of the lab name): control to collapse/expand that lab’s result list. Persist not required for V1 (session-only OK). Keep keyboard/focus reasonable. |
 | BL-021 | open | **M2 Spaces enumeration (gated)** | Perplexity Space-only threads deferred: `SPACE_THREAD_ENUMERATION_ENABLED=false` until one list endpoint is live-proven; then enable under fetch/space caps. |
+| BL-022 | open | **M3 Claude Projects live confirmation** | Projects directory + `…/projects/{id}/conversations` inferred (S2 residual #2). Adapter keeps ladder but treats directory/all-fetch failure as coverage-unproven → `unavailable` (not false `empty`). Confirm routes in Network tab; then tighten README and drop caveat. |
+| BL-023 | open | **M3 Claude DOM Recents fallback** | S2/blueprint mention DOM Recents/search fallback; M3 ships endpoint-only (M1/M2 precedent). Discuss before calling M3 complete if live endpoints drift; optional content-script Recents filter. |
 
 ## Cross-cutting / later milestones
 
@@ -67,3 +69,4 @@ Add new rows at the top of the relevant section. Prefer one line + link to PR/is
 | --- | --- |
 | 2026-07-28 | Initial backlog after M1 smoke pass; BL-001 deferred by operator choice. |
 | 2026-07-29 | BL-020 per-lab collapse toggle; BL-021 gated Spaces follow-up after M2 scope narrow. |
+| 2026-07-29 | BL-022 Claude Projects live confirmation; BL-023 Claude DOM Recents fallback (M3 review). |

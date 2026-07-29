@@ -5,6 +5,10 @@
  * pack wiring under extension/lib/.
  *
  * Those modules must be listed in manifest web_accessible_resources (MV3).
+ *
+ * Search is endpoint-only (S2 preferred path). DOM Recents/search fallback is
+ * deferred (BL-023) pending human choice; DOM is used for login-shell auth
+ * signals only — consistent with M1/M2 endpoint-only precedent.
  */
 (function () {
   'use strict';
