@@ -17,10 +17,17 @@ export const PROJECTS_MAX_PROJECTS = 8;
 /**
  * Soft page cap for root chat_conversations pagination.
  * History scanned ≈ ROOT_CONVERSATION_MAX_PAGES × pageSize (default ~100).
+ * Hitting this ceiling is intentional: unread older history may remain, and
+ * zero title matches still report `empty` (not truncated). See BL-024.
  */
 export const ROOT_CONVERSATION_MAX_PAGES = 5;
 
-/** Soft page cap per project conversation list (S6). */
+/**
+ * Soft page cap per project conversation list (S6).
+ * ≈ PROJECT_CONVERSATION_MAX_PAGES × pageSize (~60). Soft cap still allows
+ * `empty` when the scanned window has no match — distinct from failure/budget
+ * truncation. See BL-024.
+ */
 export const PROJECT_CONVERSATION_MAX_PAGES = 3;
 
 /**
