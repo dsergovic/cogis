@@ -5,7 +5,7 @@ Pick up during polish, the next natural milestone, or a short fix branch.
 Do **not** treat this file as agent context unless the operator attaches it.
 
 **Integration branch:** `dev`  
-**Last updated:** 2026-07-28
+**Last updated:** 2026-07-29
 
 ---
 
@@ -35,6 +35,14 @@ Add new rows at the top of the relevant section. Prefer one line + link to PR/is
 
 ---
 
+
+## UI / product polish
+
+| ID | Status | Item | Notes |
+| --- | --- | --- | --- |
+| BL-020 | open | **Per-lab collapse/expand toggle** | On each platform **card header** (left of the lab name): control to collapse/expand that lab’s result list. Persist not required for V1 (session-only OK). Keep keyboard/focus reasonable. |
+| BL-021 | open | **M2 Spaces enumeration (gated)** | Perplexity Space-only threads deferred: `SPACE_THREAD_ENUMERATION_ENABLED=false` until one list endpoint is live-proven; then enable under fetch/space caps. |
+
 ## Cross-cutting / later milestones
 
 | ID | Status | Item | Notes |
@@ -58,3 +66,4 @@ Add new rows at the top of the relevant section. Prefer one line + link to PR/is
 | Date | Change |
 | --- | --- |
 | 2026-07-28 | Initial backlog after M1 smoke pass; BL-001 deferred by operator choice. |
+| 2026-07-29 | BL-020 per-lab collapse toggle; BL-021 gated Spaces follow-up after M2 scope narrow. |
