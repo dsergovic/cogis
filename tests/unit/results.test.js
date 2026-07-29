@@ -5,9 +5,13 @@ import { dirname, join } from 'node:path';
 import {
   normalizeChatgptHit,
   normalizeChatgptSearchResponse,
+  normalizePerplexityListResponse,
   stripForbiddenFields,
   pointerHasForbiddenFields,
   chatgptDeepLink,
+  perplexityDeepLink,
+  perplexityPrefillUrl,
+  resolveResultHref,
   unixSecondsToIso,
   FORBIDDEN_BODY_KEYS,
 } from '../../extension/lib/results.js';
@@ -94,5 +98,96 @@ describe('normalizeChatgptSearchResponse', () => {
       update_time: 1720000000 + i,
     }));
     expect(normalizeChatgptSearchResponse({ items }, { max: 20 })).toHaveLength(20);
+  });
+});
+
+const perplexityFixturesDir = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '../fixtures/perplexity',
+);
+
+function loadPerplexityFixture(name) {
+  return JSON.parse(readFileSync(join(perplexityFixturesDir, name), 'utf8'));
+}
+
+describe('perplexityDeepLink / prefill', () => {
+  it('builds /search/{slug} deep link', () => {
+    expect(perplexityDeepLink('my-thread-slug')).toBe(
+      'https://www.perplexity.ai/search/my-thread-slug',
+    );
+  });
+
+  it('builds ?q= prefill URL', () => {
+    expect(perplexityPrefillUrl('tomato soup')).toBe(
+      'https://www.perplexity.ai/search?q=tomato+soup',
+    );
+  });
+});
+
+describe('normalizePerplexityListResponse', () => {
+  it('normalizes stub hits including Space-tagged thread and strips bodies', () => {
+    const payload = loadPerplexityFixture('list.hits.stub.json');
+    const results = normalizePerplexityListResponse(payload);
+    expect(results).toHaveLength(2);
+    expect(results[0].title).toMatch(/tomato soup/i);
+    expect(results[1].title).toMatch(/Space-only/i);
+    expect(
+      results.every((r) => r.deepLinkUrl?.startsWith('https://www.perplexity.ai/search/')),
+    ).toBe(true);
+    expect(results.every((r) => r.prefillSupported === true)).toBe(true);
+    expect(results.every((r) => !pointerHasForbiddenFields(r))).toBe(true);
+    expect(JSON.stringify(results)).not.toMatch(/secret body/i);
+  });
+
+  it('returns empty array for empty stub', () => {
+    expect(normalizePerplexityListResponse(loadPerplexityFixture('list.empty.stub.json'))).toEqual(
+      [],
+    );
+  });
+});
+
+describe('resolveResultHref cascade', () => {
+  it('prefers deep link, then Perplexity prefill, then home', () => {
+    expect(
+      resolveResultHref(
+        {
+          platform: 'perplexity',
+          title: 't',
+          dateIso: null,
+          deepLinkUrl: 'https://www.perplexity.ai/search/abc',
+          prefillSupported: true,
+        },
+        'perplexity',
+        'query',
+      ),
+    ).toBe('https://www.perplexity.ai/search/abc');
+
+    expect(
+      resolveResultHref(
+        {
+          platform: 'perplexity',
+          title: 't',
+          dateIso: null,
+          deepLinkUrl: null,
+          prefillSupported: true,
+        },
+        'perplexity',
+        'tomato',
+      ),
+    ).toBe('https://www.perplexity.ai/search?q=tomato');
+
+    expect(
+      resolveResultHref(
+        {
+          platform: 'chatgpt',
+          title: 't',
+          dateIso: null,
+          deepLinkUrl: null,
+          prefillSupported: false,
+        },
+        'chatgpt',
+        'x',
+      ),
+    ).toBe('https://chatgpt.com');
   });
 });

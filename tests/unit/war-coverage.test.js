@@ -7,20 +7,41 @@ import { collectImportGraph, extractGetUrlResources, warCovers } from '../helper
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const extensionRoot = join(root, 'extension');
 
+/**
+ * @param {object} manifest
+ * @param {string[]} hostGlobs
+ */
+function warResourcesForHosts(manifest, hostGlobs) {
+  const entries = manifest.web_accessible_resources ?? [];
+  return entries
+    .filter((e) => hostGlobs.every((h) => (e.matches ?? []).includes(h)))
+    .flatMap((e) => e.resources);
+}
+
 describe('web_accessible_resources coverage for content-script imports', () => {
-  it('lists WAR entries matching chatgpt hosts', () => {
+  it('lists WAR entries matching chatgpt and perplexity hosts', () => {
     const manifest = JSON.parse(readFileSync(join(extensionRoot, 'manifest.json'), 'utf8'));
-    expect(manifest.web_accessible_resources?.length).toBeGreaterThan(0);
-    const entry = manifest.web_accessible_resources[0];
-    expect(entry.matches).toEqual(
-      expect.arrayContaining(['https://chatgpt.com/*', 'https://chat.openai.com/*']),
-    );
-    expect(entry.resources.length).toBeGreaterThan(0);
+    expect(manifest.web_accessible_resources?.length).toBeGreaterThanOrEqual(2);
+
+    const chatgptWar = warResourcesForHosts(manifest, [
+      'https://chatgpt.com/*',
+      'https://chat.openai.com/*',
+    ]);
+    expect(chatgptWar.length).toBeGreaterThan(0);
+
+    const perplexityWar = warResourcesForHosts(manifest, [
+      'https://www.perplexity.ai/*',
+      'https://perplexity.ai/*',
+    ]);
+    expect(perplexityWar.length).toBeGreaterThan(0);
   });
 
-  it('covers every chrome.runtime.getURL target used by the content script', () => {
+  it('covers every chrome.runtime.getURL target used by chatgpt content script', () => {
     const manifest = JSON.parse(readFileSync(join(extensionRoot, 'manifest.json'), 'utf8'));
-    const warResources = (manifest.web_accessible_resources ?? []).flatMap((e) => e.resources);
+    const warResources = warResourcesForHosts(manifest, [
+      'https://chatgpt.com/*',
+      'https://chat.openai.com/*',
+    ]);
     const cs = readFileSync(join(extensionRoot, 'content/chatgpt.js'), 'utf8');
     const getUrlPaths = extractGetUrlResources(cs);
     expect(getUrlPaths.length).toBeGreaterThan(0);
@@ -29,11 +50,43 @@ describe('web_accessible_resources coverage for content-script imports', () => {
     }
   });
 
-  it('covers the full static import graph of the shared adapter entry', () => {
+  it('covers every chrome.runtime.getURL target used by perplexity content script', () => {
     const manifest = JSON.parse(readFileSync(join(extensionRoot, 'manifest.json'), 'utf8'));
-    const warResources = (manifest.web_accessible_resources ?? []).flatMap((e) => e.resources);
+    const warResources = warResourcesForHosts(manifest, [
+      'https://www.perplexity.ai/*',
+      'https://perplexity.ai/*',
+    ]);
+    const cs = readFileSync(join(extensionRoot, 'content/perplexity.js'), 'utf8');
+    const getUrlPaths = extractGetUrlResources(cs);
+    expect(getUrlPaths.length).toBeGreaterThan(0);
+    for (const path of getUrlPaths) {
+      expect(warCovers(warResources, path), `WAR missing getURL target: ${path}`).toBe(true);
+    }
+  });
+
+  it('covers the full static import graph of the chatgpt adapter entry', () => {
+    const manifest = JSON.parse(readFileSync(join(extensionRoot, 'manifest.json'), 'utf8'));
+    const warResources = warResourcesForHosts(manifest, [
+      'https://chatgpt.com/*',
+      'https://chat.openai.com/*',
+    ]);
     const graph = collectImportGraph(extensionRoot, 'lib/chatgpt-adapter.js');
     expect(graph).toContain('lib/chatgpt-adapter.js');
+    expect(graph).toContain('lib/selectors/loader.js');
+    expect(graph).toContain('lib/selectors/local-pack.js');
+    for (const path of graph) {
+      expect(warCovers(warResources, path), `WAR missing graph module: ${path}`).toBe(true);
+    }
+  });
+
+  it('covers the full static import graph of the perplexity adapter entry', () => {
+    const manifest = JSON.parse(readFileSync(join(extensionRoot, 'manifest.json'), 'utf8'));
+    const warResources = warResourcesForHosts(manifest, [
+      'https://www.perplexity.ai/*',
+      'https://perplexity.ai/*',
+    ]);
+    const graph = collectImportGraph(extensionRoot, 'lib/perplexity-adapter.js');
+    expect(graph).toContain('lib/perplexity-adapter.js');
     expect(graph).toContain('lib/selectors/loader.js');
     expect(graph).toContain('lib/selectors/local-pack.js');
     for (const path of graph) {

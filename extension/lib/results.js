@@ -160,3 +160,173 @@ export function normalizeChatgptSearchResponse(payload, opts = {}) {
   }
   return pointers;
 }
+
+/**
+ * Build Perplexity deep link from thread slug.
+ * @param {string} slug
+ * @returns {string|null}
+ */
+export function perplexityDeepLink(slug) {
+  if (typeof slug !== 'string') return null;
+  const trimmed = slug.trim().replace(/^\/+/, '');
+  if (!trimmed) return null;
+  return `https://www.perplexity.ai/search/${encodeURIComponent(trimmed)}`;
+}
+
+/**
+ * Build Perplexity URL prefill.
+ * @param {string} query
+ * @returns {string|null}
+ */
+export function perplexityPrefillUrl(query) {
+  if (typeof query !== 'string') return null;
+  const trimmed = query.trim();
+  if (!trimmed) return null;
+  const url = new URL('https://www.perplexity.ai/search');
+  url.searchParams.set('q', trimmed);
+  return url.toString();
+}
+
+/**
+ * Parse Perplexity last_query_datetime (ISO string or unix) to ISO-8601.
+ * @param {unknown} value
+ * @returns {string|null}
+ */
+export function perplexityDateToIso(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'number' || (typeof value === 'string' && /^\d+(\.\d+)?$/.test(value))) {
+    return unixSecondsToIso(value);
+  }
+  if (typeof value === 'string') {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toISOString();
+  }
+  return null;
+}
+
+/**
+ * True when payload looks like a Perplexity list_ask_threads response.
+ * @param {unknown} payload
+ */
+export function isRecognizedPerplexityListPayload(payload) {
+  if (Array.isArray(payload)) return true;
+  if (!payload || typeof payload !== 'object') return false;
+  const obj = /** @type {Record<string, unknown>} */ (payload);
+  return (
+    Array.isArray(obj.threads) ||
+    Array.isArray(obj.items) ||
+    Array.isArray(obj.data) ||
+    Array.isArray(obj.results)
+  );
+}
+
+/**
+ * Extract item array from Perplexity list_ask_threads JSON.
+ * @param {unknown} payload
+ * @returns {Record<string, unknown>[]}
+ */
+export function extractPerplexityListItems(payload) {
+  if (!isRecognizedPerplexityListPayload(payload)) return [];
+  if (Array.isArray(payload)) return payload.filter((x) => x && typeof x === 'object');
+  const obj = /** @type {Record<string, unknown>} */ (payload);
+  if (Array.isArray(obj.threads)) return obj.threads.filter((x) => x && typeof x === 'object');
+  if (Array.isArray(obj.items)) return obj.items.filter((x) => x && typeof x === 'object');
+  if (Array.isArray(obj.data)) return obj.data.filter((x) => x && typeof x === 'object');
+  if (Array.isArray(obj.results)) return obj.results.filter((x) => x && typeof x === 'object');
+  return [];
+}
+
+/**
+ * Normalize a single Perplexity thread list item into a Cogis pointer.
+ * @param {Record<string, unknown>} raw
+ * @returns {import('./messaging.js').PointerRecord|null}
+ */
+export function normalizePerplexityHit(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+
+  const safe = stripForbiddenFields(raw);
+  const slug =
+    (typeof safe.slug === 'string' && safe.slug) ||
+    (typeof safe.url_slug === 'string' && safe.url_slug) ||
+    (typeof safe.thread_slug === 'string' && safe.thread_slug) ||
+    null;
+
+  const titleRaw = safe.title ?? safe.name ?? safe.query_str;
+  const title = typeof titleRaw === 'string' && titleRaw.trim() ? titleRaw.trim() : null;
+  if (!slug || !title) return null;
+
+  const dateIso =
+    perplexityDateToIso(safe.last_query_datetime) ??
+    perplexityDateToIso(safe.lastQueryDatetime) ??
+    perplexityDateToIso(safe.updated) ??
+    perplexityDateToIso(safe.updated_at);
+
+  const pointer = {
+    platform: 'perplexity',
+    title,
+    dateIso,
+    deepLinkUrl: perplexityDeepLink(slug),
+    prefillSupported: true,
+  };
+
+  if (pointerHasForbiddenFields(pointer)) {
+    return null;
+  }
+  return pointer;
+}
+
+/**
+ * Normalize a Perplexity list_ask_threads response into capped pointers.
+ * @param {unknown} payload
+ * @param {{ max?: number }} [opts]
+ * @returns {import('./messaging.js').PointerRecord[]}
+ */
+export function normalizePerplexityListResponse(payload, opts = {}) {
+  const max = opts.max ?? MAX_RESULTS_PER_PLATFORM;
+  const items = extractPerplexityListItems(payload);
+  const pointers = [];
+  for (const item of items) {
+    const p = normalizePerplexityHit(item);
+    if (p) pointers.push(p);
+    if (pointers.length >= max) break;
+  }
+  return pointers;
+}
+
+/**
+ * Deduplicate pointers by deepLinkUrl (or title fallback), preserving order.
+ * @param {import('./messaging.js').PointerRecord[]} pointers
+ * @param {number} [max]
+ */
+export function dedupePointers(pointers, max = MAX_RESULTS_PER_PLATFORM) {
+  const seen = new Set();
+  const out = [];
+  for (const p of pointers) {
+    if (!p) continue;
+    const key = p.deepLinkUrl || `title:${p.title}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(p);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+/**
+ * Click cascade href: deep link → prefill (?q=) → lab home.
+ * @param {import('./messaging.js').PointerRecord|null|undefined} hit
+ * @param {string} platformId
+ * @param {string|null|undefined} query
+ * @param {string} [homeFallback]
+ */
+export function resolveResultHref(hit, platformId, query, homeFallback = '#') {
+  if (hit?.deepLinkUrl) return hit.deepLinkUrl;
+  if (hit?.prefillSupported && platformId === 'perplexity') {
+    const prefill = perplexityPrefillUrl(query ?? '');
+    if (prefill) return prefill;
+  }
+  if (platformId === 'perplexity') return 'https://www.perplexity.ai';
+  if (platformId === 'chatgpt') return 'https://chatgpt.com';
+  return homeFallback;
+}

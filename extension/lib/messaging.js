@@ -6,6 +6,9 @@ export const MSG = Object.freeze({
   CHATGPT_SEARCH: 'CHATGPT_SEARCH',
   CHATGPT_SEARCH_RESULT: 'CHATGPT_SEARCH_RESULT',
   CHATGPT_SEARCH_CANCEL: 'CHATGPT_SEARCH_CANCEL',
+  PERPLEXITY_SEARCH: 'PERPLEXITY_SEARCH',
+  PERPLEXITY_SEARCH_RESULT: 'PERPLEXITY_SEARCH_RESULT',
+  PERPLEXITY_SEARCH_CANCEL: 'PERPLEXITY_SEARCH_CANCEL',
 });
 
 /** @typedef {'idle'|'loading'|'ready'|'empty'|'login_required'|'unavailable'|'timeout'} GroupStatus */
@@ -33,7 +36,7 @@ export function createSearchRequest(input) {
     type: MSG.SEARCH_REQUEST,
     requestId: input.requestId,
     query: input.query,
-    platforms: Array.isArray(input.platforms) ? input.platforms : ['chatgpt'],
+    platforms: Array.isArray(input.platforms) ? input.platforms : ['chatgpt', 'perplexity'],
   };
 }
 

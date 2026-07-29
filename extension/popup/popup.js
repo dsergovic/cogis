@@ -5,7 +5,8 @@ import {
   normalizeQuery,
   shouldApplyChunk,
 } from '../lib/messaging.js';
-import { PLATFORMS, loginRequiredCopy, unavailableCopy } from '../lib/platforms.js';
+import { PLATFORMS, PLATFORM_ORDER, loginRequiredCopy, unavailableCopy } from '../lib/platforms.js';
+import { resolveResultHref } from '../lib/results.js';
 import { POPUP_WATCHDOG_MS } from '../lib/timeouts.js';
 import { shouldWatchdogTimeout } from '../lib/orchestration.js';
 
@@ -15,8 +16,10 @@ const hint = document.getElementById('cogis-hint');
 
 /** @type {string|null} */
 let activeRequestId = null;
-/** @type {ReturnType<typeof setTimeout>|null} */
-let watchdogTimer = null;
+/** @type {string|null} */
+let activeQuery = null;
+/** @type {Map<string, ReturnType<typeof setTimeout>>} */
+const watchdogTimers = new Map();
 
 function newRequestId() {
   if (globalThis.crypto?.randomUUID) return crypto.randomUUID();
@@ -30,20 +33,30 @@ function groupEl(platformId) {
   return document.querySelector(`[data-cogis-platform="${platformId}"]`);
 }
 
-function clearWatchdog() {
-  if (watchdogTimer != null) {
-    clearTimeout(watchdogTimer);
-    watchdogTimer = null;
+/**
+ * @param {string} [platformId]
+ */
+function clearWatchdog(platformId) {
+  if (platformId) {
+    const timer = watchdogTimers.get(platformId);
+    if (timer != null) {
+      clearTimeout(timer);
+      watchdogTimers.delete(platformId);
+    }
+    return;
   }
+  for (const timer of watchdogTimers.values()) clearTimeout(timer);
+  watchdogTimers.clear();
 }
 
 /**
  * @param {string} requestId
+ * @param {string} platformId
  */
-function armWatchdog(requestId) {
-  clearWatchdog();
-  watchdogTimer = setTimeout(() => {
-    const el = groupEl('chatgpt');
+function armWatchdog(requestId, platformId) {
+  clearWatchdog(platformId);
+  const timer = setTimeout(() => {
+    const el = groupEl(platformId);
     const status = el?.dataset.cogisStatus ?? 'idle';
     if (
       shouldWatchdogTimeout({
@@ -52,11 +65,12 @@ function armWatchdog(requestId) {
         status,
       })
     ) {
-      setGroupState('chatgpt', 'timeout', {
-        message: unavailableCopy('chatgpt'),
+      setGroupState(platformId, 'timeout', {
+        message: unavailableCopy(platformId),
       });
     }
   }, POPUP_WATCHDOG_MS);
+  watchdogTimers.set(platformId, timer);
 }
 
 /**
@@ -103,7 +117,7 @@ function setGroupState(platformId, status, opts = {}) {
         a.target = '_blank';
         a.rel = 'noopener noreferrer';
         a.className = 'cogis-login-link';
-        a.textContent = 'Open ChatGPT';
+        a.textContent = `Open ${platform?.label ?? platformId}`;
         statusText.append(a);
       }
       break;
@@ -116,7 +130,7 @@ function setGroupState(platformId, status, opts = {}) {
   }
 
   if (status !== 'loading') {
-    clearWatchdog();
+    clearWatchdog(platformId);
   }
 }
 
@@ -126,14 +140,13 @@ function setGroupState(platformId, status, opts = {}) {
  * @param {string} platformId
  */
 function renderResults(list, results, platformId) {
-  const home = PLATFORMS[platformId]?.origin ?? 'https://chatgpt.com';
   for (const hit of results) {
     const li = document.createElement('li');
     li.className = 'cogis-result-item';
 
     const a = document.createElement('a');
     a.className = 'cogis-result-link';
-    a.href = hit.deepLinkUrl || home;
+    a.href = resolveResultHref(hit, platformId, activeQuery, PLATFORMS[platformId]?.origin);
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
 
@@ -173,7 +186,9 @@ function formatDate(iso) {
 }
 
 function clearResultsUi() {
-  setGroupState('chatgpt', 'idle');
+  for (const id of PLATFORM_ORDER) {
+    setGroupState(id, 'idle');
+  }
 }
 
 function showHint(visible) {
@@ -185,6 +200,7 @@ function cancelActive() {
   if (!activeRequestId) return;
   const id = activeRequestId;
   activeRequestId = null;
+  activeQuery = null;
   clearWatchdog();
   chrome.runtime.sendMessage(createSearchCancel({ requestId: id })).catch(() => {});
 }
@@ -203,18 +219,24 @@ function submitSearch(rawQuery) {
 
   const requestId = newRequestId();
   activeRequestId = requestId;
-  setGroupState('chatgpt', 'loading');
-  armWatchdog(requestId);
+  activeQuery = query;
+
+  for (const id of PLATFORM_ORDER) {
+    setGroupState(id, 'loading');
+    armWatchdog(requestId, id);
+  }
 
   const msg = createSearchRequest({
     requestId,
     query,
-    platforms: ['chatgpt'],
+    platforms: [...PLATFORM_ORDER],
   });
 
   chrome.runtime.sendMessage(msg).catch(() => {
     if (shouldApplyChunk(activeRequestId, { requestId })) {
-      setGroupState('chatgpt', 'unavailable');
+      for (const id of PLATFORM_ORDER) {
+        setGroupState(id, 'unavailable');
+      }
     }
   });
 }
@@ -231,7 +253,7 @@ chrome.runtime.onMessage.addListener((message) => {
 
   if (message.type === MSG.SEARCH_RESULT_CHUNK) {
     if (!shouldApplyChunk(activeRequestId, message)) return;
-    if (message.platform !== 'chatgpt') return;
+    if (!PLATFORM_ORDER.includes(message.platform)) return;
 
     setGroupState(message.platform, message.status, {
       message: message.message,
