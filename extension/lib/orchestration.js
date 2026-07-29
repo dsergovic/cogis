@@ -44,3 +44,11 @@ export function shouldWatchdogTimeout(input) {
     (input.status === 'loading' || input.status === 'idle')
   );
 }
+
+/**
+ * Only close ChatGPT tabs Cogis opened for search — never user-owned tabs.
+ * @param {{ createdByUs: boolean, tabId: number|null|undefined }} input
+ */
+export function shouldCloseSearchTab(input) {
+  return Boolean(input.createdByUs && input.tabId != null);
+}

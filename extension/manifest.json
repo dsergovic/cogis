@@ -28,5 +28,18 @@
       "js": ["content/chatgpt.js"],
       "run_at": "document_idle"
     }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "lib/chatgpt-adapter.js",
+        "lib/results.js",
+        "lib/platforms.js",
+        "lib/timeouts.js",
+        "lib/selectors/loader.js",
+        "lib/selectors/local-pack.js"
+      ],
+      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"]
+    }
   ]
 }

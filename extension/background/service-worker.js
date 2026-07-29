@@ -7,11 +7,24 @@ import {
   createRequestTracker,
   withTimeout,
 } from '../lib/timeouts.js';
-import { pendingTerminalPlatforms, resolveWallExpiry } from '../lib/orchestration.js';
+import {
+  pendingTerminalPlatforms,
+  resolveWallExpiry,
+  shouldCloseSearchTab,
+} from '../lib/orchestration.js';
 
 const tracker = createRequestTracker();
 
-/** @type {Map<string, { platforms: string[], completed: Set<string>, tabId: number|null }>} */
+/**
+ * @typedef {{
+ *   platforms: string[],
+ *   completed: Set<string>,
+ *   tabId: number|null,
+ *   createdTab: boolean,
+ * }} SearchState
+ */
+
+/** @type {Map<string, SearchState>} */
 const searchState = new Map();
 
 /**
@@ -24,13 +37,13 @@ function sleep(ms) {
 /**
  * Find an existing ChatGPT tab or open one in the background.
  * @param {number} tabCompleteMs
- * @returns {Promise<number>} tab id
+ * @returns {Promise<{ tabId: number, created: boolean }>}
  */
 async function ensureChatgptTab(tabCompleteMs = TAB_COMPLETE_MS) {
   const patterns = PLATFORMS.chatgpt.hostPatterns;
   const existing = await chrome.tabs.query({ url: patterns });
   if (existing.length > 0 && existing[0].id != null) {
-    return existing[0].id;
+    return { tabId: existing[0].id, created: false };
   }
 
   const tab = await chrome.tabs.create({
@@ -42,7 +55,7 @@ async function ensureChatgptTab(tabCompleteMs = TAB_COMPLETE_MS) {
   }
 
   await waitForTabComplete(tab.id, tabCompleteMs);
-  return tab.id;
+  return { tabId: tab.id, created: true };
 }
 
 /**
@@ -74,6 +87,21 @@ function waitForTabComplete(tabId, timeoutMs) {
       }
     }, reject);
   });
+}
+
+/**
+ * Close a background tab only when Cogis created it for this search.
+ * @param {SearchState|undefined} state
+ */
+async function maybeCloseCreatedTab(state) {
+  if (!state || !shouldCloseSearchTab({ createdByUs: state.createdTab, tabId: state.tabId })) {
+    return;
+  }
+  try {
+    await chrome.tabs.remove(/** @type {number} */ (state.tabId));
+  } catch {
+    // Tab may already be closed.
+  }
 }
 
 /**
@@ -183,6 +211,8 @@ async function onWallExpiry(wallRequestId) {
 
   tracker.cancel(wallRequestId);
   await abortContentSearch(wallRequestId, state?.tabId ?? null);
+  await maybeCloseCreatedTab(state);
+  searchState.delete(wallRequestId);
 }
 
 /**
@@ -192,6 +222,7 @@ async function cancelSearch(requestId) {
   const state = searchState.get(requestId);
   await abortContentSearch(requestId, state?.tabId ?? null);
   tracker.cancel(requestId);
+  await maybeCloseCreatedTab(state);
   searchState.delete(requestId);
 }
 
@@ -205,10 +236,12 @@ async function runSearch(request) {
   );
 
   tracker.begin(requestId);
+  /** @type {SearchState} */
   const state = {
     platforms,
     completed: new Set(),
-    tabId: /** @type {number|null} */ (null),
+    tabId: null,
+    createdTab: false,
   };
   searchState.set(requestId, state);
 
@@ -236,16 +269,18 @@ async function runSearch(request) {
         // Entire platform attempt (tab prep + search) under one 8s budget.
         const result = await withTimeout(
           (async () => {
-            const tabId = await ensureChatgptTab(TAB_COMPLETE_MS);
-            if (searchState.get(requestId)) {
-              searchState.get(requestId).tabId = tabId;
+            const ensured = await ensureChatgptTab(TAB_COMPLETE_MS);
+            const current = searchState.get(requestId);
+            if (current) {
+              current.tabId = ensured.tabId;
+              current.createdTab = ensured.created;
             }
             if (!tracker.isActive(requestId)) {
               const err = new Error('aborted');
               err.name = 'AbortError';
               throw err;
             }
-            return sendChatgptSearch(tabId, { requestId, query });
+            return sendChatgptSearch(ensured.tabId, { requestId, query });
           })(),
           PLATFORM_TIMEOUT_MS,
           'chatgpt platform',
@@ -305,6 +340,8 @@ async function runSearch(request) {
     if (tracker.getActiveId() === requestId) {
       tracker.cancel(requestId);
     }
+    // Close only tabs we opened; leave user ChatGPT tabs alone.
+    await maybeCloseCreatedTab(searchState.get(requestId));
     searchState.delete(requestId);
   }
 }

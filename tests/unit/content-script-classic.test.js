@@ -18,14 +18,10 @@ function loadFixture(name) {
 function loadContentScript(fetchImpl) {
   /** @type {((message: any, sender: any, sendResponse: any) => boolean)|null} */
   let messageListener = null;
-  const adapterUrl = pathToFileURL(join(root, 'extension/lib/chatgpt-adapter.js')).href;
 
   const chromeMock = {
     runtime: {
-      getURL: vi.fn((path) => {
-        if (path === 'lib/chatgpt-adapter.js') return adapterUrl;
-        return pathToFileURL(join(root, 'extension', path)).href;
-      }),
+      getURL: vi.fn((path) => pathToFileURL(join(root, 'extension', path)).href),
       onMessage: {
         addListener: vi.fn((fn) => {
           messageListener = fn;
@@ -68,7 +64,6 @@ function sendMessage(listener, message) {
   return new Promise((resolve) => {
     const keep = listener(message, {}, resolve);
     if (keep === false) {
-      // sync response path unused for search; resolve undefined
       resolve(undefined);
     }
   });
@@ -91,6 +86,7 @@ describe('classic content script wiring', () => {
     expect(src).toContain('CHATGPT_SEARCH_CANCEL');
     expect(src).toContain('AbortController');
     expect(src).toContain("chrome.runtime.getURL('lib/chatgpt-adapter.js')");
+    expect(src).toContain("chrome.runtime.getURL('lib/selectors/loader.js')");
     expect(src).toMatch(/\bimport\s*\(/);
     expect(src).not.toContain('/backend-api/conversations/search');
     expect(src).not.toContain('SEARCH_PARAMS');
@@ -115,7 +111,7 @@ describe('content script message handler (shipped path)', () => {
       return new Response('not found', { status: 404 });
     });
 
-    const { messageListener } = loadContentScript(fetchImpl);
+    const { messageListener, chromeMock } = loadContentScript(fetchImpl);
     expect(messageListener).toBeTypeOf('function');
 
     const result = await sendMessage(messageListener, {
@@ -129,10 +125,11 @@ describe('content script message handler (shipped path)', () => {
     expect(result.results.length).toBeGreaterThan(0);
     expect(JSON.stringify(result.results)).not.toMatch(/secret body/i);
     expect(result.results[0].deepLinkUrl).toMatch(/^https:\/\/chatgpt\.com\/c\//);
-    // Pack-driven search path (via shared adapter / local-pack).
     expect(
       fetchImpl.mock.calls.some((c) => String(c[0]).includes('/backend-api/conversations/search')),
     ).toBe(true);
+    expect(chromeMock.runtime.getURL).toHaveBeenCalledWith('lib/chatgpt-adapter.js');
+    expect(chromeMock.runtime.getURL).toHaveBeenCalledWith('lib/selectors/loader.js');
   });
 
   it('aborts in-flight search on CHATGPT_SEARCH_CANCEL', async () => {
@@ -168,11 +165,60 @@ describe('content script message handler (shipped path)', () => {
       query: 'x',
     });
 
-    // Cancel while session fetch is gated.
     messageListener({ type: 'CHATGPT_SEARCH_CANCEL', requestId: 'r-cancel' }, {}, () => {});
     releaseSession();
 
     const result = await resultPromise;
     expect(result.errorCode).toBe('aborted');
+  });
+
+  it('reports adapter_import_failed when dynamic import rejects', async () => {
+    /** @type {((message: any, sender: any, sendResponse: any) => boolean)|null} */
+    let messageListener = null;
+    const chromeMock = {
+      runtime: {
+        getURL: vi.fn(() => 'file:///missing-adapter.js'),
+        onMessage: {
+          addListener: vi.fn((fn) => {
+            messageListener = fn;
+          }),
+        },
+      },
+    };
+
+    const context = {
+      chrome: chromeMock,
+      fetch: vi.fn(),
+      AbortController,
+      Response,
+      URL,
+      URLSearchParams,
+      location: { origin: 'https://chatgpt.com' },
+      document: { querySelector: () => null },
+      window: { getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) },
+      console,
+      globalThis: null,
+      self: null,
+      __dynamicImport: async () => {
+        const err = new TypeError('Failed to fetch dynamically imported module');
+        throw err;
+      },
+    };
+    context.globalThis = context;
+    context.self = context;
+
+    const src = readFileSync(join(root, 'extension/content/chatgpt.js'), 'utf8').replace(
+      /\bimport\s*\(/g,
+      '__dynamicImport(',
+    );
+    vm.runInNewContext(src, context, { filename: 'chatgpt.js' });
+
+    const result = await sendMessage(messageListener, {
+      type: 'CHATGPT_SEARCH',
+      requestId: 'r-import',
+      query: 'x',
+    });
+    expect(result.status).toBe('unavailable');
+    expect(result.errorCode).toBe('adapter_import_failed');
   });
 });

@@ -3,6 +3,7 @@ import {
   resolveWallExpiry,
   pendingTerminalPlatforms,
   shouldWatchdogTimeout,
+  shouldCloseSearchTab,
 } from '../../extension/lib/orchestration.js';
 import {
   PLATFORM_TIMEOUT_MS,
@@ -88,5 +89,13 @@ describe('withTimeout platform envelope', () => {
         'chatgpt platform',
       ),
     ).rejects.toMatchObject({ code: 'timeout' });
+  });
+});
+
+describe('shouldCloseSearchTab', () => {
+  it('only closes tabs Cogis created', () => {
+    expect(shouldCloseSearchTab({ createdByUs: true, tabId: 3 })).toBe(true);
+    expect(shouldCloseSearchTab({ createdByUs: false, tabId: 3 })).toBe(false);
+    expect(shouldCloseSearchTab({ createdByUs: true, tabId: null })).toBe(false);
   });
 });

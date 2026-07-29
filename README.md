@@ -19,6 +19,9 @@ Single-purpose Chrome Manifest V3 extension that searches the user's own convers
 3. **Load unpacked** → select the `extension/` directory in this repo
 4. Pin **Cogis — AI Search** and open the popup
 5. Stay logged into [ChatGPT](https://chatgpt.com/) in the same browser profile
+6. After code changes, click **Reload** on the extension card before re-testing
+
+The ChatGPT content script dynamically imports shared `extension/lib/*` modules. Those paths are declared under `web_accessible_resources` for chatgpt hosts only (required for MV3 content-script `import()`).
 
 ## Develop
 
