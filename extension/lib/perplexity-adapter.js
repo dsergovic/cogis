@@ -3,13 +3,30 @@ import {
   dedupePointers,
   extractPerplexityListItems,
   isRecognizedPerplexityListPayload,
-  normalizePerplexityHit,
   normalizePerplexityListResponse,
 } from './results.js';
 import { loginRequiredCopy, unavailableCopy, PLATFORMS } from './platforms.js';
-import { MAX_RESULTS_PER_PLATFORM } from './timeouts.js';
+import { MAX_RESULTS_PER_PLATFORM, PLATFORM_TIMEOUT_MS } from './timeouts.js';
 
 const CAPABILITY = 'title-match';
+
+/**
+ * Unproven per-Space thread list routes are gated off until a live Network
+ * capture pins one shape (S3 ladder A). Do not shotgun candidate POSTs/GETs.
+ * Spaces-only recovery then relies on ladder C (`list_ask_threads` +
+ * `search_term`), which third-party clients report may embed collection metadata
+ * on Library list items when present.
+ */
+export const SPACE_THREAD_ENUMERATION_ENABLED = false;
+
+/** Minimum remaining platform budget (ms) before spending a Spaces supplement fetch. */
+export const SPACES_MIN_REMAINING_MS = 1500;
+
+/** Hard cap on Space-related fetches when enumeration is later enabled (1 path × K spaces). */
+export const SPACES_MAX_SPACES = 5;
+
+/** Hard cap on total Space-related HTTP calls per search (directory + thread probes). */
+export const SPACES_MAX_FETCHES = 6;
 
 /**
  * @param {any} err
@@ -80,7 +97,7 @@ export function classifyListAskThreadsOutcome(input) {
 }
 
 /**
- * Client-side title filter for Space-enumerated threads (title-match).
+ * Client-side title filter helper (kept for a future proven Spaces path).
  * @param {import('./messaging.js').PointerRecord[]} pointers
  * @param {string} query
  */
@@ -158,6 +175,26 @@ export function extractSpaces(payload) {
 }
 
 /**
+ * Enter Spaces supplement only when ladder C found nothing and budget remains.
+ * If C already filled results (including a full cap of 20), do not pretend Spaces
+ * was searched — prefer returning C over spending the 8s budget.
+ *
+ * @param {{
+ *   cHitCount: number,
+ *   remainingMs: number,
+ *   enumerationEnabled?: boolean,
+ *   minRemainingMs?: number,
+ * }} input
+ */
+export function shouldAttemptSpacesSupplement(input) {
+  const enumerationEnabled = input.enumerationEnabled ?? SPACE_THREAD_ENUMERATION_ENABLED;
+  if (!enumerationEnabled) return false;
+  if (input.cHitCount > 0) return false;
+  const minRemaining = input.minRemainingMs ?? SPACES_MIN_REMAINING_MS;
+  return input.remainingMs >= minRemaining;
+}
+
+/**
  * @param {object} deps
  * @param {string} deps.origin
  * @param {(input: string, init?: RequestInit) => Promise<Response>} deps.fetchImpl
@@ -166,6 +203,7 @@ export function extractSpaces(payload) {
  * @param {string} deps.query
  * @param {number} deps.pageSize
  * @param {number} deps.maxResults
+ * @param {() => boolean} [deps.isSignInVisible]
  * @returns {Promise<{ auth: 'authenticated'|'login_required'|'unavailable', pointers: import('./messaging.js').PointerRecord[], errorCode?: string, pageCount: number }>}
  */
 async function listAskThreadsSearch(deps) {
@@ -263,12 +301,23 @@ async function listAskThreadsSearch(deps) {
 }
 
 /**
- * Spaces ladder A: discover spaces then try per-space thread list candidates.
- * Failures are soft — never override a successful C result with unavailable.
+ * Spaces ladder A (gated): optional directory peek only when enumeration is enabled.
+ * Per-Space thread candidate routes are intentionally NOT probed — they were
+ * inferred and caused multi-key / multi-path storms. Until one path is live-
+ * proven, this returns an empty soft no-op so C results win the 8s budget.
+ *
+ * Cap when re-enabled: ≤1 candidate template × SPACES_MAX_SPACES, total fetches
+ * ≤ SPACES_MAX_FETCHES (including the directory GET).
  *
  * @param {object} deps
+ * @returns {Promise<{ pointers: import('./messaging.js').PointerRecord[], used: boolean, gated: boolean, fetchCount: number }>}
  */
 async function enumerateSpacesThreads(deps) {
+  // Honest no-op while candidates are gated. Prefer fail-soft over inventing routes.
+  if (!SPACE_THREAD_ENUMERATION_ENABLED) {
+    return { pointers: [], used: false, gated: true, fetchCount: 0 };
+  }
+
   const pack = deps.pack;
   const spacesPath = pack?.endpoints?.spaces ?? '/rest/spaces';
   const version = pack?.apiVersion ?? '2.18';
@@ -277,6 +326,7 @@ async function enumerateSpacesThreads(deps) {
   spacesUrl.searchParams.set('version', version);
   spacesUrl.searchParams.set('source', source);
 
+  let fetchCount = 0;
   let spacesRes;
   try {
     spacesRes = await deps.fetchImpl(spacesUrl.toString(), {
@@ -285,40 +335,43 @@ async function enumerateSpacesThreads(deps) {
       headers: buildPerplexityHeaders(pack),
       signal: deps.signal,
     });
+    fetchCount += 1;
   } catch (err) {
     if (isAbortError(err)) throw err;
-    return { pointers: [], used: false };
+    return { pointers: [], used: false, gated: false, fetchCount };
   }
 
-  if (spacesRes.status === 401 || spacesRes.status === 403) {
-    return { pointers: [], used: false, loginRequired: true };
-  }
   if (!spacesRes.ok) {
-    return { pointers: [], used: false };
+    return { pointers: [], used: false, gated: false, fetchCount };
   }
 
   let spacesPayload;
   try {
     spacesPayload = await spacesRes.json();
   } catch {
-    return { pointers: [], used: false };
+    return { pointers: [], used: false, gated: false, fetchCount };
   }
 
-  const spaces = extractSpaces(spacesPayload);
+  const spaces = extractSpaces(spacesPayload).slice(0, SPACES_MAX_SPACES);
   if (spaces.length === 0) {
-    return { pointers: [], used: true };
+    return { pointers: [], used: true, gated: false, fetchCount };
   }
 
-  const candidates = pack?.endpoints?.spaceThreadsCandidates ?? [
-    '/rest/spaces/{uuid}/threads',
-    '/rest/collection/{uuid}/threads',
-    '/rest/thread/list_ask_threads',
-  ];
+  // Single proven candidate only (pack may list one path after live capture).
+  // No multi-key body probes (collection_uuid + space_uuid + …).
+  const candidates = pack?.endpoints?.spaceThreadsCandidates;
+  const template =
+    Array.isArray(candidates) && typeof candidates[0] === 'string' ? candidates[0] : null;
+  if (!template) {
+    return { pointers: [], used: true, gated: false, fetchCount };
+  }
+
   const headers = buildPerplexityHeaders(pack);
   /** @type {import('./messaging.js').PointerRecord[]} */
   const collected = [];
 
   for (const space of spaces) {
+    if (fetchCount >= SPACES_MAX_FETCHES) break;
     if (collected.length >= deps.maxResults) break;
     if (deps.signal?.aborted) {
       const err = new Error('aborted');
@@ -326,103 +379,56 @@ async function enumerateSpacesThreads(deps) {
       throw err;
     }
 
-    for (const template of candidates) {
-      let pagePointers = [];
-      try {
-        if (template.includes('list_ask_threads')) {
-          const listUrl = buildListAskThreadsUrl(deps.origin, pack);
-          const res = await deps.fetchImpl(listUrl, {
-            method: 'POST',
-            credentials: 'include',
-            headers,
-            body: JSON.stringify({
-              limit: deps.pageSize,
-              ascending: false,
-              offset: 0,
-              search_term: deps.query,
-              collection_uuid: space.uuid,
-              filter_collection_uuid: space.uuid,
-              space_uuid: space.uuid,
-            }),
-            signal: deps.signal,
-          });
-          if (!res.ok) continue;
-          const payload = await res.json();
-          if (!isRecognizedPerplexityListPayload(payload)) continue;
-          pagePointers = normalizePerplexityListResponse(payload, { max: deps.maxResults });
-        } else {
-          const path = template.replace('{uuid}', encodeURIComponent(space.uuid));
-          const url = new URL(path, deps.origin);
-          url.searchParams.set('version', version);
-          url.searchParams.set('source', source);
-          const res = await deps.fetchImpl(url.toString(), {
-            method: 'GET',
-            credentials: 'include',
-            headers,
-            signal: deps.signal,
-          });
-          if (!res.ok) continue;
-          const payload = await res.json();
-          if (!isRecognizedPerplexityListPayload(payload)) continue;
-          pagePointers = filterPointersByTitle(
-            normalizePerplexityListResponse(payload, { max: deps.maxResults }),
-            deps.query,
-          );
-        }
-      } catch (err) {
-        if (isAbortError(err)) throw err;
-        continue;
-      }
-
-      if (pagePointers.length > 0) {
-        collected.push(...pagePointers);
-        break;
-      }
+    try {
+      const path = template.replace('{uuid}', encodeURIComponent(space.uuid));
+      const url = new URL(path, deps.origin);
+      url.searchParams.set('version', version);
+      url.searchParams.set('source', source);
+      const res = await deps.fetchImpl(url.toString(), {
+        method: 'GET',
+        credentials: 'include',
+        headers,
+        signal: deps.signal,
+      });
+      fetchCount += 1;
+      if (!res.ok) continue;
+      const payload = await res.json();
+      if (!isRecognizedPerplexityListPayload(payload)) continue;
+      const pagePointers = filterPointersByTitle(
+        normalizePerplexityListResponse(payload, { max: deps.maxResults }),
+        deps.query,
+      );
+      collected.push(...pagePointers);
+    } catch (err) {
+      if (isAbortError(err)) throw err;
     }
   }
 
   return {
     pointers: dedupePointers(collected, deps.maxResults),
     used: true,
+    gated: false,
+    fetchCount,
   };
 }
 
 /**
- * Spaces ladder B: collect /search/{slug} links from DOM when provided.
- * @param {() => { slug: string, title: string }[]} [getDomSpaceThreadLinks]
- * @param {string} query
- * @param {number} max
- */
-export function collectDomSpacePointers(getDomSpaceThreadLinks, query, max) {
-  if (typeof getDomSpaceThreadLinks !== 'function') return [];
-  let links;
-  try {
-    links = getDomSpaceThreadLinks() ?? [];
-  } catch {
-    return [];
-  }
-  /** @type {import('./messaging.js').PointerRecord[]} */
-  const pointers = [];
-  for (const link of links) {
-    if (!link || typeof link.slug !== 'string' || typeof link.title !== 'string') continue;
-    const p = normalizePerplexityHit({ slug: link.slug, title: link.title });
-    if (p) pointers.push(p);
-  }
-  return filterPointersByTitle(dedupePointers(pointers, max), query);
-}
-
-/**
  * Pure orchestration of Perplexity search given injectable fetchers.
- * Endpoint-first per S3; Spaces ladder C → A → B. Never stores cookies/bodies.
+ * Endpoint-first per S3 ladder C (`list_ask_threads`). Spaces A is gated until
+ * a live-proven thread route exists; former ladder B (page `/search/` scrape)
+ * is not Spaces recovery and is omitted.
+ *
+ * Never stores cookies/bodies.
  *
  * @param {object} deps
  * @param {string} deps.query
  * @param {string} [deps.origin]
  * @param {(input: string, init?: RequestInit) => Promise<Response>} deps.fetchImpl
  * @param {() => boolean} [deps.isSignInVisible]
- * @param {() => { slug: string, title: string }[]} [deps.getDomSpaceThreadLinks]
  * @param {number} [deps.maxResults]
  * @param {AbortSignal} [deps.signal]
+ * @param {() => number} [deps.now] injectable clock for budget tests
+ * @param {number} [deps.platformBudgetMs]
  */
 export async function searchPerplexity(deps) {
   const origin = deps.origin ?? PLATFORMS.perplexity.origin;
@@ -431,6 +437,9 @@ export async function searchPerplexity(deps) {
   const signal = deps.signal;
   const pack = getPlatformSelectors('perplexity');
   const pageSize = pack?.pageSize ?? MAX_RESULTS_PER_PLATFORM;
+  const now = deps.now ?? Date.now;
+  const platformBudgetMs = deps.platformBudgetMs ?? PLATFORM_TIMEOUT_MS;
+  const startedAt = now();
 
   if (signal?.aborted) {
     const err = new Error('aborted');
@@ -438,8 +447,8 @@ export async function searchPerplexity(deps) {
     throw err;
   }
 
-  // Ladder C: list_ask_threads with search_term (covers Library; Deplexity notes
-  // collection/space metadata is embedded on list items when present).
+  // Ladder C: list_ask_threads with search_term (Library/History; may include
+  // threads that also live in Spaces when the lab returns them for search_term).
   const primary = await listAskThreadsSearch({
     origin,
     fetchImpl,
@@ -481,10 +490,18 @@ export async function searchPerplexity(deps) {
   }
 
   /** @type {import('./messaging.js').PointerRecord[]} */
-  let merged = [...primary.pointers];
+  const merged = [...primary.pointers];
+  const remainingMs = platformBudgetMs - (now() - startedAt);
 
-  // Ladder A: GET /rest/spaces + per-space thread candidates (soft merge).
-  if (merged.length < maxResults) {
+  // Ladder A: only when C returned 0 hits and budget remains. Currently gated to
+  // a soft no-op (no unproven candidate storm). If C already has hits — including
+  // a full cap of 20 — we do not pretend Spaces was separately searched.
+  if (
+    shouldAttemptSpacesSupplement({
+      cHitCount: merged.length,
+      remainingMs,
+    })
+  ) {
     const spaceEnum = await enumerateSpacesThreads({
       origin,
       fetchImpl,
@@ -494,19 +511,14 @@ export async function searchPerplexity(deps) {
       pageSize,
       maxResults,
     });
-    // Do not override a successful C auth with Spaces 401 — empty C + Spaces 401
-    // still means "authenticated, no hits" (or Spaces endpoint drift), not logout.
-    merged = dedupePointers([...merged, ...(spaceEnum.pointers ?? [])], maxResults);
-  }
-
-  // Ladder B: DOM Spaces links (soft merge when still short).
-  if (merged.length < maxResults) {
-    const domPointers = collectDomSpacePointers(
-      deps.getDomSpaceThreadLinks,
-      deps.query,
-      maxResults,
-    );
-    merged = dedupePointers([...merged, ...domPointers], maxResults);
+    if (spaceEnum.pointers?.length) {
+      return {
+        status: 'ready',
+        results: dedupePointers([...merged, ...spaceEnum.pointers], maxResults),
+        capability: CAPABILITY,
+        errorCode: undefined,
+      };
+    }
   }
 
   if (merged.length > 0) {

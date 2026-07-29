@@ -9,7 +9,7 @@ Single-purpose Chrome Manifest V3 extension that searches the user's own convers
 | Milestone | Scope                                              | Status          |
 | --------- | -------------------------------------------------- | --------------- |
 | M1        | ChatGPT end-to-end (including Projects via search) | Merged to `dev` |
-| M2        | Perplexity end-to-end (including Spaces ladder)    | In progress     |
+| M2        | Perplexity end-to-end (Library + gated Spaces)     | In progress     |
 | M3–M4     | Claude, Gemini                                     | Not started     |
 | M5–M6     | Selector pack remote merge, debug panel            | Not started     |
 
@@ -51,7 +51,7 @@ After the first green run: Settings → Rules → require status check `build-an
 Popup footnote: _Some AIs do not support full-text search._
 
 - ChatGPT: session-authenticated `GET /backend-api/conversations/search` (Projects included).
-- Perplexity: session-cookie `POST /rest/thread/list_ask_threads` with `search_term` (Spaces via S3 ladder C→A→B).
+- Perplexity: session-cookie `POST /rest/thread/list_ask_threads` with `search_term` (Library). Spaces-only recovery via unproven per-Space routes is **gated off** until a live-proven path lands; C may still return Space-tagged threads when the lab includes them.
 
 ## Privacy & ToS
 

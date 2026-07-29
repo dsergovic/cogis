@@ -78,31 +78,6 @@
     }
   }
 
-  /**
-   * Ladder B helper: collect /search/{slug} anchors that look like Space threads.
-   * Best-effort only; title-match filter runs in the adapter.
-   */
-  function getDomSpaceThreadLinks() {
-    /** @type {{ slug: string, title: string }[]} */
-    const out = [];
-    try {
-      const anchors = document.querySelectorAll('a[href*="/search/"]');
-      for (let i = 0; i < anchors.length; i += 1) {
-        const a = anchors[i];
-        const href = a.getAttribute('href') || '';
-        const match = href.match(/\/search\/([^/?#]+)/);
-        if (!match) continue;
-        const slug = decodeURIComponent(match[1]);
-        const title = (a.textContent || '').trim();
-        if (!slug || !title) continue;
-        out.push({ slug: slug, title: title });
-      }
-    } catch (_e) {
-      return [];
-    }
-    return out;
-  }
-
   function isAbortError(err) {
     return !!err && (err.name === 'AbortError' || err.code === 'ABORT_ERR');
   }
@@ -143,7 +118,6 @@
         origin: origin,
         fetchImpl: fetch.bind(globalThis),
         isSignInVisible: isSignInVisible,
-        getDomSpaceThreadLinks: getDomSpaceThreadLinks,
         signal: ac.signal,
       });
       return {

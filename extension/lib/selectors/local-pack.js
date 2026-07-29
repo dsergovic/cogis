@@ -39,15 +39,11 @@ export default {
       endpoints: {
         listAskThreads: '/rest/thread/list_ask_threads',
         spaces: '/rest/spaces',
-        spaceThreadsCandidates: [
-          '/rest/spaces/{uuid}/threads',
-          '/rest/collection/{uuid}/threads',
-          '/rest/thread/list_ask_threads',
-        ],
+        spaceThreadsCandidates: [],
       },
       pageSize: 20,
       notes:
-        'Endpoint-first per S3: POST list_ask_threads with search_term + session cookies. Capability title-match until proven full-text. Spaces ladder: C (search_term) → A (GET /rest/spaces + per-space list candidates) → B (DOM Spaces links).',
+        'Endpoint-first per S3: POST list_ask_threads with search_term + session cookies. Capability title-match until proven full-text. Spaces: rely on C (search_term may return Space-tagged threads). Per-Space thread routes gated off until live-proven (spaceThreadsCandidates empty; SPACE_THREAD_ENUMERATION_ENABLED=false). Former ladder B page-anchor scrape is not Spaces recovery and is omitted.',
     },
   },
 };

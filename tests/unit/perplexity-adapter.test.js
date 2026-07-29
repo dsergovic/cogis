@@ -6,10 +6,11 @@ import {
   buildListAskThreadsUrl,
   buildPerplexityHeaders,
   classifyListAskThreadsOutcome,
-  collectDomSpacePointers,
   extractSpaces,
   filterPointersByTitle,
   searchPerplexity,
+  shouldAttemptSpacesSupplement,
+  SPACE_THREAD_ENUMERATION_ENABLED,
 } from '../../extension/lib/perplexity-adapter.js';
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), '../fixtures/perplexity');
@@ -122,20 +123,47 @@ describe('extractSpaces / filterPointersByTitle', () => {
   });
 });
 
-describe('collectDomSpacePointers', () => {
-  it('normalizes DOM links and title-filters', () => {
-    const pointers = collectDomSpacePointers(
-      () => [
-        { slug: 'space-only-planning-notes-xyz789', title: 'Space-only planning notes' },
-        { slug: 'unrelated', title: 'Something else' },
-      ],
-      'space-only',
-      20,
-    );
-    expect(pointers).toHaveLength(1);
-    expect(pointers[0].deepLinkUrl).toBe(
-      'https://www.perplexity.ai/search/space-only-planning-notes-xyz789',
-    );
+describe('shouldAttemptSpacesSupplement', () => {
+  it('is gated off by default (no unproven Space probe storm)', () => {
+    expect(SPACE_THREAD_ENUMERATION_ENABLED).toBe(false);
+    expect(
+      shouldAttemptSpacesSupplement({
+        cHitCount: 0,
+        remainingMs: 5000,
+      }),
+    ).toBe(false);
+  });
+
+  it('requires zero C hits, remaining budget, and enumeration enabled', () => {
+    expect(
+      shouldAttemptSpacesSupplement({
+        cHitCount: 0,
+        remainingMs: 5000,
+        enumerationEnabled: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldAttemptSpacesSupplement({
+        cHitCount: 1,
+        remainingMs: 5000,
+        enumerationEnabled: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldAttemptSpacesSupplement({
+        cHitCount: 0,
+        remainingMs: 500,
+        enumerationEnabled: true,
+        minRemainingMs: 1500,
+      }),
+    ).toBe(false);
+    expect(
+      shouldAttemptSpacesSupplement({
+        cHitCount: 20,
+        remainingMs: 5000,
+        enumerationEnabled: true,
+      }),
+    ).toBe(false);
   });
 });
 
@@ -162,12 +190,12 @@ describe('searchPerplexity', () => {
         expect(init?.headers?.['x-app-apiversion']).toBe('2.18');
         const body = JSON.parse(String(init?.body ?? '{}'));
         expect(body.search_term).toBe('tomato');
+        expect(body.collection_uuid).toBeUndefined();
+        expect(body.space_uuid).toBeUndefined();
+        expect(body.filter_collection_uuid).toBeUndefined();
         return jsonResponse(loadFixture('list.hits.stub.json'));
       }
-      if (String(url).includes('/rest/spaces')) {
-        return jsonResponse(loadFixture('spaces.stub.json'));
-      }
-      return new Response('not found', { status: 404 });
+      throw new Error('unexpected Space probe ' + url);
     });
 
     const outcome = await searchPerplexity({ query: 'tomato', fetchImpl });
@@ -178,6 +206,10 @@ describe('searchPerplexity', () => {
     expect(outcome.results[0].deepLinkUrl).toMatch(/^https:\/\/www\.perplexity\.ai\/search\//);
     expect(JSON.stringify(outcome.results)).not.toMatch(/secret body/i);
 
+    // Space-tagged Library hits from C are fine; no separate Spaces fetch.
+    expect(outcome.results.some((r) => /Space-only/i.test(r.title))).toBe(true);
+    expect(fetchImpl.mock.calls.every((c) => !String(c[0]).includes('/rest/spaces'))).toBe(true);
+
     await searchPerplexity({ query: 'tomato', fetchImpl });
     const listCalls = fetchImpl.mock.calls.filter((c) =>
       String(c[0]).includes('/rest/thread/list_ask_threads'),
@@ -185,70 +217,62 @@ describe('searchPerplexity', () => {
     expect(listCalls.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('returns empty for zero hits (not unavailable)', async () => {
+  it('skips Spaces supplement when C already has hits (including full cap)', async () => {
+    const items = Array.from({ length: 20 }, (_, i) => ({
+      title: `Library hit ${i}`,
+      slug: `library-hit-${i}`,
+      last_query_datetime: '2024-07-03T12:00:00.000Z',
+      uuid: `00000000-0000-0000-0000-${String(i).padStart(12, '0')}`,
+    }));
     const fetchImpl = vi.fn(async (url) => {
       if (String(url).includes('/rest/thread/list_ask_threads')) {
+        return jsonResponse(items);
+      }
+      throw new Error('unexpected ' + url);
+    });
+
+    const outcome = await searchPerplexity({ query: 'Library', fetchImpl });
+    expect(outcome.status).toBe('ready');
+    expect(outcome.results).toHaveLength(20);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns empty for zero hits without Space probe storm (gated A)', async () => {
+    const fetchImpl = vi.fn(async (url, init) => {
+      if (String(url).includes('/rest/thread/list_ask_threads')) {
+        const body = JSON.parse(String(init?.body ?? '{}'));
+        expect(body.collection_uuid).toBeUndefined();
         return jsonResponse(loadFixture('list.empty.stub.json'));
       }
-      if (String(url).includes('/rest/spaces')) {
-        return jsonResponse(loadFixture('spaces.stub.json'));
-      }
-      return new Response('not found', { status: 404 });
+      throw new Error('unexpected Space probe ' + url);
     });
 
     const outcome = await searchPerplexity({ query: 'zzzz-no-hit', fetchImpl });
     expect(outcome.status).toBe('empty');
     expect(outcome.results).toEqual([]);
     expect(outcome.capability).toBe('title-match');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl.mock.calls.every((c) => !String(c[0]).includes('/rest/spaces'))).toBe(true);
   });
 
-  it('merges Spaces ladder A hits when C is empty', async () => {
-    const spaceThread = {
-      title: 'Space-only planning notes',
-      slug: 'space-only-planning-notes-xyz789',
-      last_query_datetime: '2024-06-01T08:30:00.000Z',
-      uuid: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-    };
-
-    const fetchImpl = vi.fn(async (url, init) => {
-      if (String(url).includes('/rest/thread/list_ask_threads')) {
-        const body = JSON.parse(String(init?.body ?? '{}'));
-        if (body.collection_uuid || body.space_uuid || body.filter_collection_uuid) {
-          return jsonResponse([spaceThread]);
-        }
-        return jsonResponse([]);
-      }
-      if (String(url).includes('/rest/spaces')) {
-        return jsonResponse(loadFixture('spaces.stub.json'));
-      }
-      return new Response('not found', { status: 404 });
-    });
-
-    const outcome = await searchPerplexity({ query: 'Space-only', fetchImpl });
-    expect(outcome.status).toBe('ready');
-    expect(outcome.results.some((r) => /Space-only/i.test(r.title))).toBe(true);
-  });
-
-  it('merges DOM ladder B when endpoints return empty', async () => {
+  it('does not treat page-link scrape as Spaces recovery (B dropped)', async () => {
     const fetchImpl = vi.fn(async (url) => {
       if (String(url).includes('/rest/thread/list_ask_threads')) {
         return jsonResponse([]);
       }
-      if (String(url).includes('/rest/spaces')) {
-        return jsonResponse({ private_spaces: [] });
-      }
-      return new Response('not found', { status: 404 });
+      throw new Error('unexpected ' + url);
     });
 
     const outcome = await searchPerplexity({
       query: 'Space-only',
       fetchImpl,
+      // Former B injection — ignored; not a Spaces fallback.
       getDomSpaceThreadLinks: () => [
         { slug: 'space-only-planning-notes-xyz789', title: 'Space-only planning notes' },
       ],
     });
-    expect(outcome.status).toBe('ready');
-    expect(outcome.results[0].deepLinkUrl).toContain('space-only-planning-notes-xyz789');
+    expect(outcome.status).toBe('empty');
+    expect(outcome.results).toEqual([]);
   });
 
   it('aborts when signal is aborted', async () => {
