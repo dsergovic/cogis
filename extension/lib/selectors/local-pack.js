@@ -63,7 +63,7 @@ export default {
       pageSize: 20,
       projectListQuery: { limit: 8 },
       notes:
-        'Endpoint-first per S2: GET organizations → paginated chat_conversations (client title-match after full-page normalize) → Projects directory + per-project conversations (paginated, budget-capped). Deep link https://claude.ai/chat/{uuid}. Prefill not supported. Capability title-match. Root scan soft-capped at ROOT_CONVERSATION_MAX_PAGES×pageSize (~100). Projects routes inferred / not live-confirmed (BL-022). DOM Recents search fallback deferred (BL-023). include_harmony_projects omitted until live-proven.',
+        'Endpoint-first per S2: GET organizations → paginated chat_conversations (client title-match after full-page normalize) → Projects directory + per-project conversations (breadth-first page-1 then deepen, budget-capped). Deep link https://claude.ai/chat/{uuid}. Prefill not supported. Capability title-match. Root scan soft-capped at ROOT_CONVERSATION_MAX_PAGES×pageSize (~100). Incomplete/unattempted Projects coverage → unavailable/timeout not empty (BL-022). DOM Recents search fallback deferred (BL-023). include_harmony_projects omitted until live-proven.',
     },
   },
 };

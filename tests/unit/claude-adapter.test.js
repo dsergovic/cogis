@@ -177,10 +177,13 @@ describe('extractProjects / matchClaudePage / coverage', () => {
     expect(ROOT_CONVERSATION_MAX_PAGES).toBe(5);
   });
 
-  it('projectsCoverageEstablished distinguishes soft-fail from empty', () => {
+  it('projectsCoverageEstablished only trusts fully established coverage', () => {
     expect(projectsCoverageEstablished('ok')).toBe(true);
     expect(projectsCoverageEstablished('empty_directory')).toBe(true);
-    expect(projectsCoverageEstablished('skipped')).toBe(true);
+    expect(projectsCoverageEstablished('skipped_full')).toBe(true);
+    expect(projectsCoverageEstablished('skipped')).toBe(false);
+    expect(projectsCoverageEstablished('skipped_budget')).toBe(false);
+    expect(projectsCoverageEstablished('truncated')).toBe(false);
     expect(projectsCoverageEstablished('directory_failed')).toBe(false);
     expect(projectsCoverageEstablished('all_fetches_failed')).toBe(false);
   });
@@ -319,7 +322,7 @@ describe('searchClaude', () => {
     expect(outcome.results).toHaveLength(1);
   });
 
-  it('returns empty when no title matches and Projects coverage is established', async () => {
+  it('returns empty when no title matches and Projects coverage is fully established', async () => {
     const outcome = await searchClaude({
       query: 'zzzz-no-match',
       fetchImpl: orgRootFetch({
@@ -333,6 +336,189 @@ describe('searchClaude', () => {
     expect(outcome.status).toBe('empty');
     expect(outcome.capability).toBe('title-match');
     expect(outcome.results).toEqual([]);
+  });
+
+  it('does not return empty when Projects are skipped due to budget (N3)', async () => {
+    let now = 0;
+    const fetchImpl = vi.fn(async (url) => {
+      const u = String(url);
+      if (
+        u.includes('/api/organizations') &&
+        !u.includes('chat_conversations') &&
+        !u.includes('/projects')
+      ) {
+        return jsonResponse(loadFixture('organizations.stub.json'));
+      }
+      if (u.includes('chat_conversations')) {
+        now += 7000; // burn budget during root paging
+        return jsonResponse(
+          Array.from({ length: 20 }, (_, i) => ({
+            uuid: `aaaaaaaa-aaaa-aaaa-aaaa-${String(i).padStart(12, '0')}`,
+            name: `Other ${i}`,
+            updated_at: '2024-07-03T12:00:00.000000Z',
+          })),
+        );
+      }
+      if (u.includes('/projects')) {
+        throw new Error('Projects must not be called when budget-skipped');
+      }
+      return new Response('not found', { status: 404 });
+    });
+
+    const outcome = await searchClaude({
+      query: 'zzzz-no-match',
+      fetchImpl,
+      now: () => now,
+      platformBudgetMs: 8000,
+    });
+
+    expect(outcome.status).not.toBe('empty');
+    expect(['timeout', 'unavailable']).toContain(outcome.status);
+    expect(outcome.errorCode).toMatch(/projects_skipped_budget|projects_coverage/);
+  });
+
+  it('requests a second page for a full project (breadth then deepen)', async () => {
+    const projectOffsets = [];
+    const fetchImpl = vi.fn(async (url) => {
+      const u = String(url);
+      if (
+        u.includes('/api/organizations') &&
+        !u.includes('chat_conversations') &&
+        !u.includes('/projects')
+      ) {
+        return jsonResponse(loadFixture('organizations.stub.json'));
+      }
+      if (u.includes('chat_conversations')) {
+        return jsonResponse([]);
+      }
+      if (u.includes('/projects/') && u.includes('/conversations')) {
+        const offset = Number(new URL(u).searchParams.get('offset') || '0');
+        projectOffsets.push(offset);
+        if (offset === 0) {
+          return jsonResponse(
+            Array.from({ length: 20 }, (_, i) => ({
+              uuid: `22222222-2222-2222-2222-${String(i).padStart(12, '0')}`,
+              name: `Noise ${i}`,
+            })),
+          );
+        }
+        return jsonResponse([
+          {
+            uuid: '33333333-3333-3333-3333-333333333333',
+            name: 'Deep page tomato broth',
+          },
+        ]);
+      }
+      if (u.includes('/projects')) {
+        return jsonResponse([{ uuid: 'cccccccc-cccc-cccc-cccc-cccccccccccc', name: 'Kitchen' }]);
+      }
+      return new Response('not found', { status: 404 });
+    });
+
+    const outcome = await searchClaude({
+      query: 'tomato',
+      fetchImpl,
+      platformBudgetMs: 8000,
+    });
+
+    expect(projectOffsets).toContain(0);
+    expect(projectOffsets).toContain(20);
+    expect(outcome.status).toBe('ready');
+    expect(outcome.results[0].title).toMatch(/Deep page tomato/i);
+  });
+
+  it('queries page-1 of all projects before deepen; 8 full projects is not false empty', async () => {
+    const page1Projects = new Set();
+    const fetchImpl = vi.fn(async (url) => {
+      const u = String(url);
+      if (
+        u.includes('/api/organizations') &&
+        !u.includes('chat_conversations') &&
+        !u.includes('/projects')
+      ) {
+        return jsonResponse(loadFixture('organizations.stub.json'));
+      }
+      if (u.includes('chat_conversations')) {
+        return jsonResponse([]);
+      }
+      if (u.includes('/projects/') && u.includes('/conversations')) {
+        const match = u.match(/projects\/([^/]+)\/conversations/);
+        const projectId = match?.[1];
+        const offset = Number(new URL(u).searchParams.get('offset') || '0');
+        if (offset === 0 && projectId) page1Projects.add(decodeURIComponent(projectId));
+        return jsonResponse(
+          Array.from({ length: 20 }, (_, i) => ({
+            uuid: `${projectId?.slice(0, 8) ?? 'deadbeef'}-0000-0000-0000-${String(offset + i).padStart(12, '0')}`,
+            name: `Noise ${offset + i}`,
+          })),
+        );
+      }
+      if (u.includes('/projects')) {
+        return jsonResponse(
+          Array.from({ length: 8 }, (_, i) => ({
+            uuid: `${String(i).padStart(8, 'c')}-cccc-cccc-cccc-cccccccccccc`,
+            name: `Project ${i}`,
+          })),
+        );
+      }
+      return new Response('not found', { status: 404 });
+    });
+
+    const outcome = await searchClaude({
+      query: 'zzzz-no-match',
+      fetchImpl,
+      platformBudgetMs: 8000,
+    });
+
+    expect(page1Projects.size).toBe(8);
+    // Full page-1 for all 8 + deepen may truncate, but must not claim empty.
+    expect(outcome.status).not.toBe('empty');
+  });
+
+  it('returns unavailable (not empty) when Projects scan is truncated', async () => {
+    // Force truncation: tiny fetch budget via exhausting deadline mid-ladder.
+    let now = 1000;
+    const fetchImpl = vi.fn(async (url) => {
+      const u = String(url);
+      if (
+        u.includes('/api/organizations') &&
+        !u.includes('chat_conversations') &&
+        !u.includes('/projects')
+      ) {
+        return jsonResponse(loadFixture('organizations.stub.json'));
+      }
+      if (u.includes('chat_conversations')) {
+        return jsonResponse([]);
+      }
+      if (u.includes('/projects/') && u.includes('/conversations')) {
+        now += 2500;
+        return jsonResponse(
+          Array.from({ length: 20 }, (_, i) => ({
+            uuid: `dddddddd-dddd-dddd-dddd-${String(i).padStart(12, '0')}`,
+            name: `Noise ${i}`,
+          })),
+        );
+      }
+      if (u.includes('/projects')) {
+        return jsonResponse(
+          Array.from({ length: 8 }, (_, i) => ({
+            uuid: `${String(i).padStart(8, 'e')}-eeee-eeee-eeee-eeeeeeeeeeee`,
+            name: `P${i}`,
+          })),
+        );
+      }
+      return new Response('not found', { status: 404 });
+    });
+
+    const outcome = await searchClaude({
+      query: 'zzzz',
+      fetchImpl,
+      now: () => now,
+      platformBudgetMs: 5000,
+    });
+
+    expect(outcome.status).not.toBe('empty');
+    expect(outcome.errorCode).toMatch(/truncated|skipped|coverage|projects/);
   });
 
   it('returns unavailable (not empty) when Projects directory fails and root has no matches', async () => {

@@ -119,6 +119,8 @@
         fetchImpl: fetch.bind(globalThis),
         isSignInVisible: isSignInVisible,
         signal: ac.signal,
+        platformBudgetMs:
+          typeof message.platformBudgetMs === 'number' ? message.platformBudgetMs : undefined,
       });
       return {
         type: MSG.PERPLEXITY_SEARCH_RESULT,

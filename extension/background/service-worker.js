@@ -157,7 +157,7 @@ async function abortAllContentSearches(requestId, state) {
  * Message the classic content script; retry briefly if it is not ready yet.
  * @param {string} platformId
  * @param {number} tabId
- * @param {{ requestId: string, query: string }} payload
+ * @param {{ requestId: string, query: string, platformBudgetMs?: number }} payload
  */
 async function sendPlatformSearch(platformId, tabId, payload) {
   const type = PLATFORM_SEARCH_MSG[platformId];
@@ -167,6 +167,7 @@ async function sendPlatformSearch(platformId, tabId, payload) {
     type,
     requestId: payload.requestId,
     query: payload.query,
+    platformBudgetMs: payload.platformBudgetMs,
   };
 
   let lastErr;
@@ -278,6 +279,7 @@ async function runPlatform(requestId, query, platformId, state) {
   let terminalStatus = 'unavailable';
 
   try {
+    const platformStarted = Date.now();
     const result = await withTimeout(
       (async () => {
         const ensured = await ensurePlatformTab(platformId, TAB_COMPLETE_MS);
@@ -290,7 +292,14 @@ async function runPlatform(requestId, query, platformId, state) {
           err.name = 'AbortError';
           throw err;
         }
-        return sendPlatformSearch(platformId, ensured.tabId, { requestId, query });
+        // Remaining wall inside the 8s platform budget after tab ensure (I-5).
+        const spent = Date.now() - platformStarted;
+        const platformBudgetMs = Math.max(400, PLATFORM_TIMEOUT_MS - spent);
+        return sendPlatformSearch(platformId, ensured.tabId, {
+          requestId,
+          query,
+          platformBudgetMs,
+        });
       })(),
       PLATFORM_TIMEOUT_MS,
       `${platformId} platform`,

@@ -14,12 +14,6 @@ const CAPABILITY = 'title-match';
 /** Hard cap on Projects fetched when supplementing root recents (S2 + S6). */
 export const PROJECTS_MAX_PROJECTS = 8;
 
-/** Hard cap on Project conversation list HTTP calls per search (includes paging). */
-export const PROJECTS_MAX_FETCHES = 10;
-
-/** Minimum remaining platform budget (ms) before spending Projects supplement fetches. */
-export const PROJECTS_MIN_REMAINING_MS = 1200;
-
 /**
  * Soft page cap for root chat_conversations pagination.
  * History scanned ≈ ROOT_CONVERSATION_MAX_PAGES × pageSize (default ~100).
@@ -28,6 +22,15 @@ export const ROOT_CONVERSATION_MAX_PAGES = 5;
 
 /** Soft page cap per project conversation list (S6). */
 export const PROJECT_CONVERSATION_MAX_PAGES = 3;
+
+/**
+ * HTTP call budget for Projects ladder: directory (1) + page-1 for each project
+ * + one deepen round. Breadth-first ordering spends page-1 before deepen (N3).
+ */
+export const PROJECTS_MAX_FETCHES = 1 + PROJECTS_MAX_PROJECTS + PROJECTS_MAX_PROJECTS;
+
+/** Minimum remaining platform budget (ms) before spending Projects supplement fetches. */
+export const PROJECTS_MIN_REMAINING_MS = 1200;
 
 /** Bail out of sequential loops when remaining budget cannot afford another RTT. */
 export const MIN_RTT_BUDGET_MS = 400;
@@ -230,10 +233,14 @@ export function shouldAttemptProjectsSupplement(input) {
 
 /**
  * True when Projects coverage was established enough to trust an `empty` chip.
- * @param {'ok'|'skipped'|'directory_failed'|'all_fetches_failed'|'empty_directory'|undefined} coverage
+ * `skipped_budget` / `truncated` / failures are NOT established (false empty).
+ * `skipped_full` is established only because root already filled the match cap
+ * (caller returns `ready` with hits — empty path is unreachable).
+ *
+ * @param {string|undefined} coverage
  */
 export function projectsCoverageEstablished(coverage) {
-  return coverage === 'ok' || coverage === 'empty_directory' || coverage === 'skipped';
+  return coverage === 'ok' || coverage === 'empty_directory' || coverage === 'skipped_full';
 }
 
 /**
@@ -318,6 +325,8 @@ async function fetchJson(deps) {
  *   pointers: import('./messaging.js').PointerRecord[],
  *   errorCode?: string,
  *   pageCount: number,
+ *   truncated?: boolean,
+ *   partialErrorCode?: string,
  * }>}
  */
 async function listRootConversations(deps) {
@@ -326,6 +335,9 @@ async function listRootConversations(deps) {
   let offset = 0;
   let pageCount = 0;
   let sawAuth = false;
+  let truncated = false;
+  /** @type {string|undefined} */
+  let partialErrorCode;
   const pageSize = deps.pageSize;
   const maxPages = deps.maxPages ?? ROOT_CONVERSATION_MAX_PAGES;
 
@@ -335,7 +347,10 @@ async function listRootConversations(deps) {
       err.name = 'AbortError';
       throw err;
     }
-    if (remainingMs(deps) < MIN_RTT_BUDGET_MS) break;
+    if (remainingMs(deps) < MIN_RTT_BUDGET_MS) {
+      if (sawAuth) truncated = true;
+      break;
+    }
 
     const conversationsPath = (
       deps.pack?.endpoints?.chatConversations ?? `/api/organizations/{orgId}/chat_conversations`
@@ -354,7 +369,14 @@ async function listRootConversations(deps) {
     });
 
     if (result.auth !== 'authenticated') {
-      if (sawAuth) break;
+      if (sawAuth) {
+        truncated = true;
+        partialErrorCode = result.errorCode ?? 'conversations_page_failed';
+        if (typeof console !== 'undefined' && console.debug) {
+          console.debug('[cogis:claude] root page truncated', partialErrorCode);
+        }
+        break;
+      }
       return {
         auth: result.auth,
         pointers: [],
@@ -364,7 +386,14 @@ async function listRootConversations(deps) {
     }
 
     if (!isRecognizedClaudeListPayload(result.payload)) {
-      if (sawAuth) break;
+      if (sawAuth) {
+        truncated = true;
+        partialErrorCode = 'conversations_unrecognized';
+        if (typeof console !== 'undefined' && console.debug) {
+          console.debug('[cogis:claude] root page truncated', partialErrorCode);
+        }
+        break;
+      }
       return {
         auth: 'unavailable',
         pointers: [],
@@ -389,20 +418,22 @@ async function listRootConversations(deps) {
     auth: 'authenticated',
     pointers: dedupePointers(collected, deps.maxResults),
     pageCount,
+    truncated,
+    partialErrorCode,
   };
 }
 
 /**
  * Enumerate Projects then project conversations (S2 required scope).
- * Routes are inferred (S2 residual risk #2) — failures are observable via
- * `coverage` / `errorCode` so UI does not confuse ladder break with empty.
+ * Breadth-first: page 1 for every project before deepen rounds (N3).
+ * Routes are inferred (S2 residual risk #2) — failures/truncation are
+ * observable via `coverage` / `errorCode`.
  *
  * @param {object} deps
  * @returns {Promise<{
  *   pointers: import('./messaging.js').PointerRecord[],
- *   used: boolean,
  *   fetchCount: number,
- *   coverage: 'ok'|'directory_failed'|'all_fetches_failed'|'empty_directory',
+ *   coverage: 'ok'|'truncated'|'directory_failed'|'all_fetches_failed'|'empty_directory',
  *   auth?: 'login_required'|'unavailable',
  *   errorCode?: string,
  * }>}
@@ -429,7 +460,6 @@ async function enumerateProjectConversations(deps) {
   if (projectsResult.auth === 'login_required') {
     return {
       pointers: [],
-      used: false,
       fetchCount,
       coverage: 'directory_failed',
       auth: 'login_required',
@@ -442,7 +472,6 @@ async function enumerateProjectConversations(deps) {
     }
     return {
       pointers: [],
-      used: false,
       fetchCount,
       coverage: 'directory_failed',
       errorCode: projectsResult.errorCode ?? 'projects_directory_failed',
@@ -453,7 +482,6 @@ async function enumerateProjectConversations(deps) {
   if (projects.length === 0) {
     return {
       pointers: [],
-      used: true,
       fetchCount,
       coverage: 'empty_directory',
     };
@@ -467,29 +495,40 @@ async function enumerateProjectConversations(deps) {
   const collected = [];
   let attemptedFetches = 0;
   let successfulFetches = 0;
+  let truncated = false;
   const maxPages = deps.projectMaxPages ?? PROJECT_CONVERSATION_MAX_PAGES;
 
-  for (const project of projects) {
-    if (fetchCount >= PROJECTS_MAX_FETCHES) break;
-    if (collected.length >= deps.maxResults) break;
-    if (remainingMs(deps) < MIN_RTT_BUDGET_MS) break;
+  /** @type {{ uuid: string, offset: number, pageCount: number, hasMore: boolean, attempted: boolean }[]} */
+  const states = projects.map((p) => ({
+    uuid: p.uuid,
+    offset: 0,
+    pageCount: 0,
+    hasMore: true,
+    attempted: false,
+  }));
 
-    let offset = 0;
-    let pageCount = 0;
-
-    while (collected.length < deps.maxResults && pageCount < maxPages) {
-      if (fetchCount >= PROJECTS_MAX_FETCHES) break;
+  // Breadth-first rounds: round 0 = page 1 for every project, then deepen.
+  outer: for (let round = 0; round < maxPages; round += 1) {
+    for (const state of states) {
+      if (!state.hasMore) continue;
+      if (collected.length >= deps.maxResults) break outer;
+      if (fetchCount >= PROJECTS_MAX_FETCHES || remainingMs(deps) < MIN_RTT_BUDGET_MS) {
+        truncated = true;
+        break outer;
+      }
       if (deps.signal?.aborted) {
         const err = new Error('aborted');
         err.name = 'AbortError';
         throw err;
       }
-      if (remainingMs(deps) < MIN_RTT_BUDGET_MS) break;
 
       const path = template
         .replace('{orgId}', encodeURIComponent(deps.orgId))
-        .replace('{projectId}', encodeURIComponent(project.uuid));
-      const url = buildClaudeUrl(deps.origin, path, { limit: deps.pageSize, offset });
+        .replace('{projectId}', encodeURIComponent(state.uuid));
+      const url = buildClaudeUrl(deps.origin, path, {
+        limit: deps.pageSize,
+        offset: state.offset,
+      });
 
       try {
         const result = await fetchJson({
@@ -500,23 +539,36 @@ async function enumerateProjectConversations(deps) {
         });
         fetchCount += 1;
         attemptedFetches += 1;
-        if (result.auth !== 'authenticated') break;
-        if (!isRecognizedClaudeListPayload(result.payload)) break;
+        state.attempted = true;
+
+        if (result.auth !== 'authenticated' || !isRecognizedClaudeListPayload(result.payload)) {
+          state.hasMore = false;
+          continue;
+        }
 
         successfulFetches += 1;
-        pageCount += 1;
+        state.pageCount += 1;
         const pageItems = extractClaudeConversationItems(result.payload);
         const room = deps.maxResults - collected.length;
         const pagePointers = matchClaudePage(result.payload, deps.query, room);
         collected.push(...pagePointers);
 
-        if (pageItems.length < deps.pageSize) break;
-        offset += deps.pageSize;
+        if (pageItems.length < deps.pageSize) {
+          state.hasMore = false;
+        } else {
+          state.offset += deps.pageSize;
+        }
       } catch (err) {
         if (isAbortError(err)) throw err;
-        break;
+        state.attempted = true;
+        state.hasMore = false;
       }
     }
+    if (!states.some((s) => s.hasMore)) break;
+  }
+
+  if (states.some((s) => !s.attempted)) {
+    truncated = true;
   }
 
   if (attemptedFetches > 0 && successfulFetches === 0) {
@@ -525,16 +577,30 @@ async function enumerateProjectConversations(deps) {
     }
     return {
       pointers: [],
-      used: true,
       fetchCount,
       coverage: 'all_fetches_failed',
       errorCode: 'projects_fetches_failed',
     };
   }
 
+  if (truncated) {
+    if (typeof console !== 'undefined' && console.debug) {
+      console.debug('[cogis:claude] projects scan truncated', {
+        attempted: states.filter((s) => s.attempted).length,
+        total: states.length,
+        fetchCount,
+      });
+    }
+    return {
+      pointers: dedupePointers(collected, deps.maxResults),
+      fetchCount,
+      coverage: 'truncated',
+      errorCode: 'projects_truncated',
+    };
+  }
+
   return {
     pointers: dedupePointers(collected, deps.maxResults),
-    used: true,
     fetchCount,
     coverage: 'ok',
   };
@@ -684,13 +750,16 @@ export async function searchClaude(deps) {
 
   /** @type {import('./messaging.js').PointerRecord[]} */
   let merged = [...root.pointers];
-  /** @type {'ok'|'skipped'|'directory_failed'|'all_fetches_failed'|'empty_directory'} */
-  let projectsCoverage = 'skipped';
+  /** @type {string} */
+  let projectsCoverage = 'skipped_budget';
   /** @type {string|undefined} */
   let projectsErrorCode;
 
   const rem = remainingMs({ deadlineAt, now });
-  if (
+  if (merged.length >= maxResults) {
+    // Root already filled the match cap — Projects not needed for empty honesty.
+    projectsCoverage = 'skipped_full';
+  } else if (
     shouldAttemptProjectsSupplement({
       rootHitCount: merged.length,
       remainingMs: rem,
@@ -728,6 +797,10 @@ export async function searchClaude(deps) {
     if (projectsEnum.pointers?.length) {
       merged = dedupePointers([...merged, ...projectsEnum.pointers], maxResults);
     }
+  } else {
+    // Time/fetch budget too low to attempt Projects with zero-or-partial root hits.
+    projectsCoverage = 'skipped_budget';
+    projectsErrorCode = 'projects_skipped_budget';
   }
 
   if (merged.length > 0) {
@@ -735,14 +808,14 @@ export async function searchClaude(deps) {
       status: 'ready',
       results: merged,
       capability: CAPABILITY,
-      errorCode: undefined,
+      errorCode: root.truncated ? root.partialErrorCode : undefined,
     };
   }
 
-  // Do not report US-3 empty when Projects coverage was never established (I-4).
+  // Do not report US-3 empty when Projects coverage was never fully established.
   if (!projectsCoverageEstablished(projectsCoverage)) {
     return {
-      status: 'unavailable',
+      status: projectsCoverage === 'skipped_budget' ? 'timeout' : 'unavailable',
       results: [],
       message: unavailableCopy('claude'),
       errorCode: projectsErrorCode ?? 'projects_coverage_unproven',

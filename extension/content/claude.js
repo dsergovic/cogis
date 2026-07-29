@@ -124,6 +124,8 @@
         fetchImpl: fetch.bind(globalThis),
         isLoginShell: isLoginShell,
         signal: ac.signal,
+        platformBudgetMs:
+          typeof message.platformBudgetMs === 'number' ? message.platformBudgetMs : undefined,
       });
       return {
         type: MSG.CLAUDE_SEARCH_RESULT,
