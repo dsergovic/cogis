@@ -9,8 +9,9 @@ Single-purpose Chrome Manifest V3 extension that searches the user's own convers
 | Milestone | Scope                                              | Status          |
 | --------- | -------------------------------------------------- | --------------- |
 | M1        | ChatGPT end-to-end (including Projects via search) | Merged to `dev` |
-| M2        | Perplexity end-to-end (Library + gated Spaces)     | In progress     |
-| M3–M4     | Claude, Gemini                                     | Not started     |
+| M2        | Perplexity end-to-end (Library + gated Spaces)     | Merged to `dev` |
+| M3        | Claude end-to-end (Recents + Projects)             | In progress     |
+| M4        | Gemini                                             | Not started     |
 | M5–M6     | Selector pack remote merge, debug panel            | Not started     |
 
 ## Load unpacked
@@ -19,7 +20,7 @@ Single-purpose Chrome Manifest V3 extension that searches the user's own convers
 2. Enable **Developer mode**
 3. **Load unpacked** → select the `extension/` directory in this repo
 4. Pin **Cogis — AI Search** and open the popup
-5. Stay logged into [ChatGPT](https://chatgpt.com/) and/or [Perplexity](https://www.perplexity.ai/) in the same browser profile
+5. Stay logged into [ChatGPT](https://chatgpt.com/), [Perplexity](https://www.perplexity.ai/), and/or [Claude](https://claude.ai/) in the same browser profile
 6. After code changes, click **Reload** on the extension card before re-testing
 
 Content scripts dynamically import shared `extension/lib/*` modules. Those paths are declared under `web_accessible_resources` per lab host (required for MV3 content-script `import()`).
@@ -41,17 +42,19 @@ GitHub Actions (`.github/workflows/ci.yml`) runs lint, format check, and unit te
 
 After the first green run: Settings → Rules → require status check `build-and-test` on `dev` and `main`.
 
-## Capability (M1–M2)
+## Capability (M1–M3)
 
 | Platform   | Capability      | Deep link                                 | Prefill                               |
 | ---------- | --------------- | ----------------------------------------- | ------------------------------------- |
 | ChatGPT    | **full-text**   | `https://chatgpt.com/c/{id}`              | —                                     |
 | Perplexity | **title-match** | `https://www.perplexity.ai/search/{slug}` | `https://www.perplexity.ai/search?q=` |
+| Claude     | **title-match** | `https://claude.ai/chat/{uuid}`           | —                                     |
 
 Popup footnote: _Some AIs do not support full-text search._
 
 - ChatGPT: session-authenticated `GET /backend-api/conversations/search` (Projects included).
 - Perplexity: session-cookie `POST /rest/thread/list_ask_threads` with `search_term` (Library). Spaces-only recovery via unproven per-Space routes is **gated off** until a live-proven path lands; C may still return Space-tagged threads when the lab includes them.
+- Claude: session-cookie org APIs (`GET /api/organizations` → paginated `chat_conversations` + Projects enumeration). Client-side title filter; no stable prefill URL.
 
 ## Privacy & ToS
 

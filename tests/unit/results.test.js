@@ -6,11 +6,13 @@ import {
   normalizeChatgptHit,
   normalizeChatgptSearchResponse,
   normalizePerplexityListResponse,
+  normalizeClaudeListResponse,
   stripForbiddenFields,
   pointerHasForbiddenFields,
   chatgptDeepLink,
   perplexityDeepLink,
   perplexityPrefillUrl,
+  claudeDeepLink,
   resolveResultHref,
   unixSecondsToIso,
   FORBIDDEN_BODY_KEYS,
@@ -146,6 +148,37 @@ describe('normalizePerplexityListResponse', () => {
   });
 });
 
+const claudeFixturesDir = join(dirname(fileURLToPath(import.meta.url)), '../fixtures/claude');
+
+function loadClaudeFixture(name) {
+  return JSON.parse(readFileSync(join(claudeFixturesDir, name), 'utf8'));
+}
+
+describe('claudeDeepLink', () => {
+  it('builds https://claude.ai/chat/{uuid}', () => {
+    expect(claudeDeepLink('abc-123')).toBe('https://claude.ai/chat/abc-123');
+  });
+});
+
+describe('normalizeClaudeListResponse', () => {
+  it('normalizes stub hits and strips bodies', () => {
+    const payload = loadClaudeFixture('conversations.hits.stub.json');
+    const results = normalizeClaudeListResponse(payload);
+    expect(results).toHaveLength(2);
+    expect(results[0].title).toMatch(/tomato soup/i);
+    expect(results.every((r) => r.deepLinkUrl?.startsWith('https://claude.ai/chat/'))).toBe(true);
+    expect(results.every((r) => r.prefillSupported === false)).toBe(true);
+    expect(results.every((r) => !pointerHasForbiddenFields(r))).toBe(true);
+    expect(JSON.stringify(results)).not.toMatch(/secret body/i);
+  });
+
+  it('returns empty array for empty stub', () => {
+    expect(normalizeClaudeListResponse(loadClaudeFixture('conversations.empty.stub.json'))).toEqual(
+      [],
+    );
+  });
+});
+
 describe('resolveResultHref cascade', () => {
   it('prefers deep link, then Perplexity prefill, then home', () => {
     expect(
@@ -189,5 +222,19 @@ describe('resolveResultHref cascade', () => {
         'x',
       ),
     ).toBe('https://chatgpt.com');
+
+    expect(
+      resolveResultHref(
+        {
+          platform: 'claude',
+          title: 't',
+          dateIso: null,
+          deepLinkUrl: null,
+          prefillSupported: false,
+        },
+        'claude',
+        'x',
+      ),
+    ).toBe('https://claude.ai');
   });
 });

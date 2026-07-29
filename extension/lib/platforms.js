@@ -28,10 +28,18 @@ export const PLATFORMS = {
     loginUrl: 'https://www.perplexity.ai/',
     hostPatterns: ['https://www.perplexity.ai/*', 'https://perplexity.ai/*'],
   },
+  claude: {
+    id: 'claude',
+    label: 'Claude',
+    capability: 'title-match',
+    origin: 'https://claude.ai',
+    loginUrl: 'https://claude.ai/login',
+    hostPatterns: ['https://claude.ai/*'],
+  },
 };
 
-/** UI group order for implemented platforms (M2: ChatGPT → Perplexity). */
-export const PLATFORM_ORDER = ['chatgpt', 'perplexity'];
+/** UI group order for implemented platforms (M3: ChatGPT → Perplexity → Claude). */
+export const PLATFORM_ORDER = ['chatgpt', 'perplexity', 'claude'];
 
 export const FOOTNOTE_TEXT = 'Some AIs do not support full-text search.';
 

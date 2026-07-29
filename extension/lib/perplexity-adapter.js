@@ -2,6 +2,7 @@ import { getPlatformSelectors } from './selectors/loader.js';
 import {
   dedupePointers,
   extractPerplexityListItems,
+  filterPointersByTitle,
   isRecognizedPerplexityListPayload,
   normalizePerplexityListResponse,
 } from './results.js';
@@ -96,18 +97,8 @@ export function classifyListAskThreadsOutcome(input) {
   return 'authenticated';
 }
 
-/**
- * Client-side title filter helper (kept for a future proven Spaces path).
- * @param {import('./messaging.js').PointerRecord[]} pointers
- * @param {string} query
- */
-export function filterPointersByTitle(pointers, query) {
-  const q = String(query || '')
-    .trim()
-    .toLowerCase();
-  if (!q) return pointers;
-  return pointers.filter((p) => typeof p.title === 'string' && p.title.toLowerCase().includes(q));
-}
+// Re-export for existing tests that import from this module.
+export { filterPointersByTitle };
 
 /**
  * Extract Space/collection descriptors from GET /rest/spaces payload.

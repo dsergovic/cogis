@@ -295,6 +295,145 @@ export function normalizePerplexityListResponse(payload, opts = {}) {
 }
 
 /**
+ * Client-side title substring filter (title-match platforms).
+ * @param {import('./messaging.js').PointerRecord[]} pointers
+ * @param {string} query
+ */
+export function filterPointersByTitle(pointers, query) {
+  const q = String(query || '')
+    .trim()
+    .toLowerCase();
+  if (!q) return pointers;
+  return pointers.filter((p) => typeof p.title === 'string' && p.title.toLowerCase().includes(q));
+}
+
+/**
+ * Build Claude deep link from conversation uuid.
+ * @param {string} uuid
+ * @returns {string|null}
+ */
+export function claudeDeepLink(uuid) {
+  if (typeof uuid !== 'string') return null;
+  const trimmed = uuid.trim();
+  if (!trimmed) return null;
+  return `https://claude.ai/chat/${encodeURIComponent(trimmed)}`;
+}
+
+/**
+ * Parse Claude created_at / updated_at (ISO string or unix) to ISO-8601.
+ * @param {unknown} value
+ * @returns {string|null}
+ */
+export function claudeDateToIso(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'number' || (typeof value === 'string' && /^\d+(\.\d+)?$/.test(value))) {
+    return unixSecondsToIso(value);
+  }
+  if (typeof value === 'string') {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toISOString();
+  }
+  return null;
+}
+
+/**
+ * True when payload looks like a Claude conversations / projects list.
+ * @param {unknown} payload
+ */
+export function isRecognizedClaudeListPayload(payload) {
+  if (Array.isArray(payload)) return true;
+  if (!payload || typeof payload !== 'object') return false;
+  const obj = /** @type {Record<string, unknown>} */ (payload);
+  return (
+    Array.isArray(obj.chat_conversations) ||
+    Array.isArray(obj.conversations) ||
+    Array.isArray(obj.items) ||
+    Array.isArray(obj.data) ||
+    Array.isArray(obj.results)
+  );
+}
+
+/**
+ * Extract conversation items from Claude list JSON.
+ * @param {unknown} payload
+ * @returns {Record<string, unknown>[]}
+ */
+export function extractClaudeConversationItems(payload) {
+  if (!isRecognizedClaudeListPayload(payload)) return [];
+  if (Array.isArray(payload)) return payload.filter((x) => x && typeof x === 'object');
+  const obj = /** @type {Record<string, unknown>} */ (payload);
+  if (Array.isArray(obj.chat_conversations)) {
+    return obj.chat_conversations.filter((x) => x && typeof x === 'object');
+  }
+  if (Array.isArray(obj.conversations)) {
+    return obj.conversations.filter((x) => x && typeof x === 'object');
+  }
+  if (Array.isArray(obj.items)) return obj.items.filter((x) => x && typeof x === 'object');
+  if (Array.isArray(obj.data)) return obj.data.filter((x) => x && typeof x === 'object');
+  if (Array.isArray(obj.results)) return obj.results.filter((x) => x && typeof x === 'object');
+  return [];
+}
+
+/**
+ * Normalize a single Claude conversation list item into a Cogis pointer.
+ * @param {Record<string, unknown>} raw
+ * @returns {import('./messaging.js').PointerRecord|null}
+ */
+export function normalizeClaudeHit(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+
+  const safe = stripForbiddenFields(raw);
+  const uuid =
+    (typeof safe.uuid === 'string' && safe.uuid) ||
+    (typeof safe.id === 'string' && safe.id) ||
+    (typeof safe.conversation_uuid === 'string' && safe.conversation_uuid) ||
+    (typeof safe.chat_conversation_uuid === 'string' && safe.chat_conversation_uuid) ||
+    null;
+
+  const titleRaw = safe.name ?? safe.title ?? safe.conversation_name;
+  const title = typeof titleRaw === 'string' && titleRaw.trim() ? titleRaw.trim() : null;
+  if (!uuid || !title) return null;
+
+  const dateIso =
+    claudeDateToIso(safe.updated_at) ??
+    claudeDateToIso(safe.updatedAt) ??
+    claudeDateToIso(safe.created_at) ??
+    claudeDateToIso(safe.createdAt);
+
+  const pointer = {
+    platform: 'claude',
+    title,
+    dateIso,
+    deepLinkUrl: claudeDeepLink(uuid),
+    prefillSupported: false,
+  };
+
+  if (pointerHasForbiddenFields(pointer)) {
+    return null;
+  }
+  return pointer;
+}
+
+/**
+ * Normalize a Claude conversations list response into capped pointers.
+ * @param {unknown} payload
+ * @param {{ max?: number }} [opts]
+ * @returns {import('./messaging.js').PointerRecord[]}
+ */
+export function normalizeClaudeListResponse(payload, opts = {}) {
+  const max = opts.max ?? MAX_RESULTS_PER_PLATFORM;
+  const items = extractClaudeConversationItems(payload);
+  const pointers = [];
+  for (const item of items) {
+    const p = normalizeClaudeHit(item);
+    if (p) pointers.push(p);
+    if (pointers.length >= max) break;
+  }
+  return pointers;
+}
+
+/**
  * Deduplicate pointers by deepLinkUrl (or title fallback), preserving order.
  * @param {import('./messaging.js').PointerRecord[]} pointers
  * @param {number} [max]
@@ -328,5 +467,6 @@ export function resolveResultHref(hit, platformId, query, homeFallback = '#') {
   }
   if (platformId === 'perplexity') return 'https://www.perplexity.ai';
   if (platformId === 'chatgpt') return 'https://chatgpt.com';
+  if (platformId === 'claude') return 'https://claude.ai';
   return homeFallback;
 }

@@ -1,5 +1,5 @@
 {
-  "version": "1.1.0",
+  "version": "1.2.0",
   "platforms": {
     "chatgpt": {
       "origin": "https://chatgpt.com",
@@ -38,6 +38,23 @@
       },
       "pageSize": 20,
       "notes": "Endpoint-first per S3: POST list_ask_threads with search_term + session cookies. Capability title-match until proven full-text. Spaces: rely on C (search_term may return Space-tagged threads). Per-Space thread routes gated off until live-proven (spaceThreadsCandidates empty; SPACE_THREAD_ENUMERATION_ENABLED=false). Former ladder B page-anchor scrape is not Spaces recovery and is omitted."
+    },
+    "claude": {
+      "origin": "https://claude.ai",
+      "loginUrl": "https://claude.ai/login",
+      "deepLinkPattern": "https://claude.ai/chat/{uuid}",
+      "selectors": {
+        "loginShell": "a[href*=\"/login\"], button[aria-label*=\"Continue with Google\" i], a[aria-label*=\"Continue with Google\" i], button[aria-label*=\"Continue with email\" i]",
+        "recentsSearch": "input[placeholder*=\"Search\" i], input[aria-label*=\"Search\" i]"
+      },
+      "endpoints": {
+        "organizations": "/api/organizations",
+        "chatConversations": "/api/organizations/{orgId}/chat_conversations",
+        "projects": "/api/organizations/{orgId}/projects",
+        "projectConversations": "/api/organizations/{orgId}/projects/{projectId}/conversations"
+      },
+      "pageSize": 20,
+      "notes": "Endpoint-first per S2: GET organizations → paginated chat_conversations (client title-match) → Projects directory + per-project conversations. Deep link https://claude.ai/chat/{uuid}. Prefill not supported. Capability title-match. DOM Recents selectors are auth/fallback hints only."
     }
   }
 }
