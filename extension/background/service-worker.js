@@ -272,6 +272,10 @@ async function runSearch(request) {
         const isTimeout = err && /** @type {{ code?: string }} */ (err).code === 'timeout';
         const isAbort = err && /** @type {{ name?: string }} */ (err).name === 'AbortError';
         if (isAbort) break;
+        // Platform budget expiry must abort in-flight content-script fetches too.
+        if (isTimeout) {
+          await abortContentSearch(requestId, state.tabId);
+        }
         terminalStatus = isTimeout ? 'timeout' : 'unavailable';
         emitIfActive(
           createResultChunk({

@@ -21,7 +21,8 @@ export default {
         search: '/backend-api/conversations/search',
       },
       searchQueryParams: ['query', 'q'],
-      notes: 'DOM result-row selectors for fallback not yet live-confirmed; endpoint-first per S1.',
+      notes:
+        'Consumed at runtime by lib/chatgpt-adapter.js (content script dynamic-imports that module). DOM result-row selectors for fallback not yet live-confirmed; endpoint-first per S1.',
     },
   },
 };

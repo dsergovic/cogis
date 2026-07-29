@@ -86,14 +86,10 @@ export function buildSearchUrls(origin, query, paramNames = ['query', 'q']) {
 }
 
 /**
- * @param {unknown} err
+ * @param {any} err
  */
 function isAbortError(err) {
-  return (
-    !!err &&
-    /** @type {{ name?: string }} */ ((err).name === 'AbortError' ||
-      /** @type {{ code?: string }} */ (err).code === 'ABORT_ERR')
-  );
+  return !!err && (err.name === 'AbortError' || err.code === 'ABORT_ERR');
 }
 
 /**
