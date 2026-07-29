@@ -6,11 +6,11 @@ Single-purpose Chrome Manifest V3 extension that searches the user's own convers
 
 ## Milestone status
 
-| Milestone | Scope                                              | Status                    |
-| --------- | -------------------------------------------------- | ------------------------- |
-| M1        | ChatGPT end-to-end (including Projects via search) | In progress / this branch |
-| M2–M4     | Perplexity, Claude, Gemini                         | Not started               |
-| M5–M6     | Selector pack remote merge, debug panel            | Not started               |
+| Milestone | Scope                                              | Status          |
+| --------- | -------------------------------------------------- | --------------- |
+| M1        | ChatGPT end-to-end (including Projects via search) | Merged to `dev` |
+| M2–M4     | Perplexity, Claude, Gemini                         | Not started     |
+| M5–M6     | Selector pack remote merge, debug panel            | Not started     |
 
 ## Load unpacked
 
@@ -33,6 +33,12 @@ npm run format:check
 ```
 
 DevDependencies only (ESLint 9, Prettier 3, Vitest 3). Runtime is plain HTML/CSS/JS — no bundler.
+
+## CI
+
+GitHub Actions (`.github/workflows/ci.yml`) runs lint, format check, and unit tests on PRs and pushes to `dev` / `main`. The job name — and branch-protection check context — is **`build-and-test`**.
+
+After the first green run: Settings → Rules → require status check `build-and-test` on `dev` and `main`.
 
 ## Capability (M1)
 
