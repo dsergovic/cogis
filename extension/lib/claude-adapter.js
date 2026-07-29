@@ -498,13 +498,14 @@ async function enumerateProjectConversations(deps) {
   let truncated = false;
   const maxPages = deps.projectMaxPages ?? PROJECT_CONVERSATION_MAX_PAGES;
 
-  /** @type {{ uuid: string, offset: number, pageCount: number, hasMore: boolean, attempted: boolean }[]} */
+  /** @type {{ uuid: string, offset: number, pageCount: number, hasMore: boolean, attempted: boolean, failed: boolean }[]} */
   const states = projects.map((p) => ({
     uuid: p.uuid,
     offset: 0,
     pageCount: 0,
     hasMore: true,
     attempted: false,
+    failed: false,
   }));
 
   // Breadth-first rounds: round 0 = page 1 for every project, then deepen.
@@ -542,6 +543,8 @@ async function enumerateProjectConversations(deps) {
         state.attempted = true;
 
         if (result.auth !== 'authenticated' || !isRecognizedClaudeListPayload(result.payload)) {
+          // Mixed-success must not look like a fully scanned project (N-1).
+          state.failed = true;
           state.hasMore = false;
           continue;
         }
@@ -561,13 +564,15 @@ async function enumerateProjectConversations(deps) {
       } catch (err) {
         if (isAbortError(err)) throw err;
         state.attempted = true;
+        state.failed = true;
         state.hasMore = false;
       }
     }
     if (!states.some((s) => s.hasMore)) break;
   }
 
-  if (states.some((s) => !s.attempted)) {
+  // Unattempted or failed projects mean the set was not fully readable (N-1).
+  if (states.some((s) => !s.attempted || s.failed)) {
     truncated = true;
   }
 
@@ -587,6 +592,7 @@ async function enumerateProjectConversations(deps) {
     if (typeof console !== 'undefined' && console.debug) {
       console.debug('[cogis:claude] projects scan truncated', {
         attempted: states.filter((s) => s.attempted).length,
+        failed: states.filter((s) => s.failed).length,
         total: states.length,
         fetchCount,
       });
@@ -812,13 +818,15 @@ export async function searchClaude(deps) {
     };
   }
 
-  // Do not report US-3 empty when Projects coverage was never fully established.
-  if (!projectsCoverageEstablished(projectsCoverage)) {
+  // Do not report US-3 empty when root or Projects coverage is incomplete (N-1/N-2).
+  if (root.truncated || !projectsCoverageEstablished(projectsCoverage)) {
     return {
       status: projectsCoverage === 'skipped_budget' ? 'timeout' : 'unavailable',
       results: [],
       message: unavailableCopy('claude'),
-      errorCode: projectsErrorCode ?? 'projects_coverage_unproven',
+      errorCode: root.truncated
+        ? (root.partialErrorCode ?? 'root_coverage_unproven')
+        : (projectsErrorCode ?? 'projects_coverage_unproven'),
     };
   }
 

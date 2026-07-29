@@ -54,7 +54,7 @@ Popup footnote: _Some AIs do not support full-text search._
 
 - ChatGPT: session-authenticated `GET /backend-api/conversations/search` (Projects included).
 - Perplexity: session-cookie `POST /rest/thread/list_ask_threads` with `search_term` (Library). Spaces-only recovery via unproven per-Space routes is **gated off** until a live-proven path lands; C may still return Space-tagged threads when the lab includes them.
-- Claude: session-cookie org APIs (`GET /api/organizations` → paginated `chat_conversations` + Projects enumeration). Client-side title filter; no stable prefill URL. **Reach ceiling:** root history scanned ≈ 5 × pageSize (~100 conversations). **Projects:** routes inferred from third-party clients / not yet live Network-tab confirmed — Project-only findability unverified until operator smoke; ladder uses breadth-first page-1 across projects, and incomplete/unattempted coverage surfaces as unavailable/timeout rather than empty (see BL-022). DOM Recents search fallback deferred (BL-023; M1/M2 endpoint-only precedent).
+- Claude: session-cookie org APIs (`GET /api/organizations` → paginated `chat_conversations` + Projects enumeration). Client-side title filter; no stable prefill URL. **Reach ceilings:** root ≈ 5 × pageSize (~100 conversations); per-project ≈ 3 × pageSize (~60). **Projects:** routes inferred from third-party clients / not yet live Network-tab confirmed — Project-only findability unverified until operator smoke; ladder uses breadth-first page-1 across projects. Incomplete, failed, or unattempted Projects (or truncated root) surface as unavailable/timeout rather than empty when that prevents trusting a full scan (see BL-022). DOM Recents search fallback deferred (BL-023; M1/M2 endpoint-only precedent).
 
 ## Privacy & ToS
 
