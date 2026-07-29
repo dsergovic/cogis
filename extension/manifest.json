@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "Cogis — AI Search",
+  "version": "0.1.0",
+  "description": "Search your own ChatGPT conversation history from a single popup and open deep links. Dev-unpacked V1.",
+  "action": {
+    "default_title": "Cogis — AI Search",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "assets/icons/icon-16.png",
+      "48": "assets/icons/icon-48.png",
+      "128": "assets/icons/icon-128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "icons": {
+    "16": "assets/icons/icon-16.png",
+    "48": "assets/icons/icon-48.png",
+    "128": "assets/icons/icon-128.png"
+  },
+  "host_permissions": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
+      "js": ["content/chatgpt.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "lib/chatgpt-adapter.js",
+        "lib/results.js",
+        "lib/platforms.js",
+        "lib/timeouts.js",
+        "lib/selectors/loader.js",
+        "lib/selectors/local-pack.js"
+      ],
+      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"]
+    }
+  ]
+}

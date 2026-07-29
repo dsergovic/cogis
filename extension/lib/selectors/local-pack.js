@@ -1,0 +1,28 @@
+/**
+ * Runtime export of the data-only selector pack.
+ * Keep in sync with local-pack.json (canonical data file for M5).
+ */
+export default {
+  version: '1.0.0',
+  platforms: {
+    chatgpt: {
+      origin: 'https://chatgpt.com',
+      loginUrl: 'https://chatgpt.com/',
+      deepLinkPattern: 'https://chatgpt.com/c/{id}',
+      selectors: {
+        loginButton: '[data-testid="login-button"]',
+        signupButton: '[data-testid="signup-button"]',
+        searchChatsButton: 'button[aria-label="Search chats"]',
+        chatHistoryNav: 'nav[aria-label="Chat history"]',
+        createNewChatButton: '[data-testid="create-new-chat-button"]',
+      },
+      endpoints: {
+        session: '/api/auth/session',
+        search: '/backend-api/conversations/search',
+      },
+      searchQueryParams: ['query', 'q'],
+      notes:
+        'Consumed at runtime by lib/chatgpt-adapter.js (content script dynamic-imports that module). DOM result-row selectors for fallback not yet live-confirmed; endpoint-first per S1.',
+    },
+  },
+};

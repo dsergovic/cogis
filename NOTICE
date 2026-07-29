@@ -1,0 +1,24 @@
+# NOTICE — Cogis — AI Search
+
+## Privacy posture
+
+- Queries are processed locally and only sent into lab surfaces the user already uses (ChatGPT in Milestone 1).
+- Cogis does not operate a search backend that receives query text.
+- Session cookies and access tokens are never copied into extension storage or transmitted to Cogis infrastructure. Tokens retrieved from the lab session endpoint are held in memory for the in-flight request only.
+- Cogis does not scrape, index, store, or redistribute conversation message bodies.
+- Nothing is cached between searches; each query re-hits the lab.
+
+## ToS posture
+
+Cogis drives the user's own logged-in sessions to retrieve conversation **pointers** the user already owns. It does not:
+
+- Bypass authentication, MFA, or rate limits.
+- Impersonate the user against any lab's servers.
+- Store, redistribute, or resell conversation content.
+- Scrape or index conversation bodies.
+
+The extension operates under the user's own credentials, in the user's own browser, at the user's own request.
+
+## Distribution
+
+V1 is **dev-unpacked** only: load the `extension/` directory via `chrome://extensions` (Developer mode → Load unpacked). Chrome Web Store listing is a human decision and is not performed by automated agents.

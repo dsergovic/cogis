@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cogis — AI Search</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="cogis-shell">
+      <header class="cogis-header">
+        <h1 class="cogis-brand">Cogis — AI Search</h1>
+      </header>
+
+      <form id="cogis-search-form" class="cogis-search" autocomplete="off">
+        <label class="cogis-sr-only" for="cogis-query">Search query</label>
+        <input
+          id="cogis-query"
+          class="cogis-query"
+          type="search"
+          name="query"
+          placeholder="Search your chats…"
+          maxlength="500"
+          autofocus
+        />
+        <button id="cogis-search-btn" class="cogis-search-btn" type="submit">Search</button>
+      </form>
+
+      <p id="cogis-hint" class="cogis-hint" hidden>Type a query and press Enter.</p>
+
+      <section id="cogis-results" class="cogis-results" aria-live="polite">
+        <div
+          class="cogis-group cogis-group--idle"
+          data-cogis-platform="chatgpt"
+          data-cogis-status="idle"
+        >
+          <div class="cogis-group-header">
+            <span class="cogis-group-title">ChatGPT</span>
+            <span class="cogis-capability" data-cogis-capability>full-text</span>
+          </div>
+          <div class="cogis-group-body">
+            <p class="cogis-group-status" data-cogis-status-text></p>
+            <ul class="cogis-result-list" data-cogis-list></ul>
+          </div>
+        </div>
+      </section>
+
+      <footer class="cogis-footer">
+        <p class="cogis-footnote">Some AIs do not support full-text search.</p>
+      </footer>
+    </div>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
