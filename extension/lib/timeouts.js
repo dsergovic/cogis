@@ -1,8 +1,14 @@
-/** Per-platform search budget (ms). */
+/** Per-platform search budget (ms) — includes tab prep + search. */
 export const PLATFORM_TIMEOUT_MS = 8000;
+
+/** Sub-budget for waiting on a newly opened ChatGPT tab (ms). */
+export const TAB_COMPLETE_MS = 3000;
 
 /** Overall wall clock for a search request (ms). */
 export const OVERALL_WALL_MS = 15000;
+
+/** Popup safety net after wall (ms). */
+export const POPUP_WATCHDOG_MS = OVERALL_WALL_MS + 500;
 
 /** Default max results rendered per platform (Tier 2). */
 export const MAX_RESULTS_PER_PLATFORM = 20;

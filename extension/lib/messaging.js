@@ -5,6 +5,7 @@ export const MSG = Object.freeze({
   SEARCH_PLATFORM_DONE: 'SEARCH_PLATFORM_DONE',
   CHATGPT_SEARCH: 'CHATGPT_SEARCH',
   CHATGPT_SEARCH_RESULT: 'CHATGPT_SEARCH_RESULT',
+  CHATGPT_SEARCH_CANCEL: 'CHATGPT_SEARCH_CANCEL',
 });
 
 /** @typedef {'idle'|'loading'|'ready'|'empty'|'login_required'|'unavailable'|'timeout'} GroupStatus */

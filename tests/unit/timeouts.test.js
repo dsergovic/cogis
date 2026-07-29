@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   PLATFORM_TIMEOUT_MS,
   OVERALL_WALL_MS,
+  TAB_COMPLETE_MS,
+  POPUP_WATCHDOG_MS,
   MAX_RESULTS_PER_PLATFORM,
   withTimeout,
   createRequestTracker,
@@ -11,6 +13,8 @@ describe('timeout constants', () => {
   it('matches blueprint budgets', () => {
     expect(PLATFORM_TIMEOUT_MS).toBe(8000);
     expect(OVERALL_WALL_MS).toBe(15000);
+    expect(TAB_COMPLETE_MS).toBe(3000);
+    expect(POPUP_WATCHDOG_MS).toBe(15500);
     expect(MAX_RESULTS_PER_PLATFORM).toBe(20);
   });
 });

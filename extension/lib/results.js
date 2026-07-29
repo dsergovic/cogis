@@ -110,12 +110,29 @@ export function normalizeChatgptHit(raw) {
 }
 
 /**
+ * True when payload looks like a ChatGPT search response we know how to read.
+ * @param {unknown} payload
+ */
+export function isRecognizedSearchPayload(payload) {
+  if (Array.isArray(payload)) return true;
+  if (!payload || typeof payload !== 'object') return false;
+  const obj = /** @type {Record<string, unknown>} */ (payload);
+  return (
+    Array.isArray(obj.items) ||
+    Array.isArray(obj.data) ||
+    Array.isArray(obj.conversations) ||
+    Array.isArray(obj.results)
+  );
+}
+
+/**
  * Extract item array from ChatGPT search JSON (shape may drift).
  * @param {unknown} payload
  * @returns {Record<string, unknown>[]}
  */
 export function extractChatgptSearchItems(payload) {
-  if (!payload || typeof payload !== 'object') return [];
+  if (!isRecognizedSearchPayload(payload)) return [];
+  if (Array.isArray(payload)) return payload.filter((x) => x && typeof x === 'object');
   const obj = /** @type {Record<string, unknown>} */ (payload);
 
   if (Array.isArray(obj.items)) return obj.items.filter((x) => x && typeof x === 'object');
@@ -123,7 +140,6 @@ export function extractChatgptSearchItems(payload) {
   if (Array.isArray(obj.conversations))
     return obj.conversations.filter((x) => x && typeof x === 'object');
   if (Array.isArray(obj.results)) return obj.results.filter((x) => x && typeof x === 'object');
-  if (Array.isArray(payload)) return payload.filter((x) => x && typeof x === 'object');
   return [];
 }
 

@@ -6,6 +6,8 @@ import {
   shouldApplyChunk,
 } from '../lib/messaging.js';
 import { PLATFORMS, loginRequiredCopy, unavailableCopy } from '../lib/platforms.js';
+import { POPUP_WATCHDOG_MS } from '../lib/timeouts.js';
+import { shouldWatchdogTimeout } from '../lib/orchestration.js';
 
 const form = document.getElementById('cogis-search-form');
 const input = /** @type {HTMLInputElement} */ (document.getElementById('cogis-query'));
@@ -13,6 +15,8 @@ const hint = document.getElementById('cogis-hint');
 
 /** @type {string|null} */
 let activeRequestId = null;
+/** @type {ReturnType<typeof setTimeout>|null} */
+let watchdogTimer = null;
 
 function newRequestId() {
   if (globalThis.crypto?.randomUUID) return crypto.randomUUID();
@@ -24,6 +28,35 @@ function newRequestId() {
  */
 function groupEl(platformId) {
   return document.querySelector(`[data-cogis-platform="${platformId}"]`);
+}
+
+function clearWatchdog() {
+  if (watchdogTimer != null) {
+    clearTimeout(watchdogTimer);
+    watchdogTimer = null;
+  }
+}
+
+/**
+ * @param {string} requestId
+ */
+function armWatchdog(requestId) {
+  clearWatchdog();
+  watchdogTimer = setTimeout(() => {
+    const el = groupEl('chatgpt');
+    const status = el?.dataset.cogisStatus ?? 'idle';
+    if (
+      shouldWatchdogTimeout({
+        activeRequestId,
+        watchdogRequestId: requestId,
+        status,
+      })
+    ) {
+      setGroupState('chatgpt', 'timeout', {
+        message: unavailableCopy('chatgpt'),
+      });
+    }
+  }, POPUP_WATCHDOG_MS);
 }
 
 /**
@@ -43,26 +76,24 @@ function setGroupState(platformId, status, opts = {}) {
   if (!statusText || !list) return;
 
   list.replaceChildren();
+  statusText.replaceChildren();
 
   const platform = PLATFORMS[platformId];
   const loginUrl = opts.loginUrl ?? platform?.loginUrl ?? '#';
 
   switch (status) {
     case 'idle':
-      statusText.textContent = '';
       break;
     case 'loading':
       statusText.textContent = 'Searching…';
       break;
     case 'ready':
-      statusText.textContent = '';
       renderResults(list, opts.results ?? [], platformId);
       break;
     case 'empty':
       statusText.textContent = 'No matching chats.';
       break;
     case 'login_required':
-      statusText.innerHTML = '';
       statusText.append(
         document.createTextNode(`${opts.message ?? loginRequiredCopy(platformId)} `),
       );
@@ -81,7 +112,11 @@ function setGroupState(platformId, status, opts = {}) {
       statusText.textContent = opts.message ?? unavailableCopy(platformId);
       break;
     default:
-      statusText.textContent = '';
+      break;
+  }
+
+  if (status !== 'loading') {
+    clearWatchdog();
   }
 }
 
@@ -150,6 +185,7 @@ function cancelActive() {
   if (!activeRequestId) return;
   const id = activeRequestId;
   activeRequestId = null;
+  clearWatchdog();
   chrome.runtime.sendMessage(createSearchCancel({ requestId: id })).catch(() => {});
 }
 
@@ -168,6 +204,7 @@ function submitSearch(rawQuery) {
   const requestId = newRequestId();
   activeRequestId = requestId;
   setGroupState('chatgpt', 'loading');
+  armWatchdog(requestId);
 
   const msg = createSearchRequest({
     requestId,
