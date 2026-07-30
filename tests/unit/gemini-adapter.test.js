@@ -29,12 +29,17 @@ function makeHelpers(opts = {}) {
   let items = opts.items ? [...opts.items] : [];
   let scrollCalls = 0;
   const growthPerScroll = opts.growthPerScroll ?? 0;
-  const maxItems = opts.maxItems ?? items.length;
+  const maxItems = opts.maxItems ?? (growthPerScroll > 0 ? Number.POSITIVE_INFINITY : items.length);
 
   return {
     isSignInVisible: () => Boolean(opts.signInVisible),
     isSignInToSaveVisible: () => Boolean(opts.signInToSaveVisible),
     hasAccountChip: () => Boolean(opts.hasAccountChip ?? (!opts.signInVisible && !opts.loginOnly)),
+    hasHistoryRail: () => {
+      if (typeof opts.hasHistoryRail === 'boolean') return opts.hasHistoryRail;
+      if (typeof opts.hasHistoryRail === 'function') return opts.hasHistoryRail(() => items);
+      return items.length > 0;
+    },
     collectHistoryItems: () => items.map((x) => ({ ...x })),
     getScrollRoot: () => ({ scrollTop: 0, clientHeight: 400, scrollBy() {} }),
     scrollHistory: () => {
@@ -89,7 +94,7 @@ describe('gemini deep link + normalize', () => {
 });
 
 describe('classifyGeminiAuth (S5)', () => {
-  it('maps sign-in shell without history to login_required', () => {
+  it('maps full sign-in shell (Sign in AND save-activity) without owner to login_required', () => {
     expect(
       classifyGeminiAuth({
         signInVisible: true,
@@ -98,6 +103,25 @@ describe('classifyGeminiAuth (S5)', () => {
         hasAccountChip: false,
       }),
     ).toBe('login_required');
+  });
+
+  it('maps one-signal-only shells to unavailable (S5 combination required)', () => {
+    expect(
+      classifyGeminiAuth({
+        signInVisible: true,
+        signInToSaveVisible: false,
+        hasHistoryItems: false,
+        hasAccountChip: false,
+      }),
+    ).toBe('unavailable');
+    expect(
+      classifyGeminiAuth({
+        signInVisible: false,
+        signInToSaveVisible: true,
+        hasHistoryItems: false,
+        hasAccountChip: false,
+      }),
+    ).toBe('unavailable');
   });
 
   it('maps history items or account chip to authenticated', () => {
@@ -119,7 +143,7 @@ describe('classifyGeminiAuth (S5)', () => {
     ).toBe('authenticated');
   });
 
-  it('maps ambiguous shell to unavailable', () => {
+  it('maps signal-free shell to unavailable', () => {
     expect(
       classifyGeminiAuth({
         signInVisible: false,
@@ -138,15 +162,17 @@ describe('gemini coverage honesty', () => {
     expect(geminiCoverageEstablished('ok')).toBe(true);
     expect(geminiCoverageEstablished('soft_ceiling')).toBe(true);
     expect(geminiCoverageEstablished('budget_exhausted')).toBe(false);
+    expect(geminiCoverageEstablished('rail_missing')).toBe(false);
   });
 
-  it('does not authorize empty when scroll budget is exhausted mid-scan', async () => {
+  it('returns timeout + history_budget_exhausted when scroll budget is exhausted mid-scan', async () => {
     let t = 0;
     const helpers = makeHelpers({
       items: [{ id: 'a', title: 'Nope', href: 'https://gemini.google.com/app/a' }],
       growthPerScroll: 3,
       maxItems: 40,
       hasAccountChip: true,
+      hasHistoryRail: true,
     });
 
     const outcome = await searchGemini({
@@ -162,9 +188,62 @@ describe('gemini coverage honesty', () => {
       waitForReadyImpl: async () => true,
     });
 
+    expect(outcome.status).toBe('timeout');
+    expect(outcome.errorCode).toBe('history_budget_exhausted');
+  });
+
+  it('returns unavailable + history_rail_missing when authenticated but rail never proven', async () => {
+    const helpers = makeHelpers({
+      items: [],
+      hasAccountChip: true,
+      hasHistoryRail: false,
+    });
+
+    const outcome = await searchGemini({
+      query: 'zzzz-no-such-chat',
+      helpers,
+      platformBudgetMs: 8000,
+      sleepImpl: async () => {},
+      waitForReadyImpl: async () => true,
+    });
+
+    expect(outcome.status).toBe('unavailable');
+    expect(outcome.errorCode).toBe('history_rail_missing');
     expect(outcome.status).not.toBe('empty');
-    expect(['timeout', 'unavailable']).toContain(outcome.status);
-    expect(outcome.errorCode).toBeTruthy();
+  });
+
+  it('never returns empty when chip is visible first and rail arrives later mid-scan', async () => {
+    let items = [];
+    const helpers = {
+      isSignInVisible: () => false,
+      isSignInToSaveVisible: () => false,
+      hasAccountChip: () => true,
+      hasHistoryRail: () => items.length > 0,
+      collectHistoryItems: () => items.map((x) => ({ ...x })),
+      getScrollRoot: () => ({ scrollTop: 0, clientHeight: 400, scrollBy() {} }),
+      scrollHistory: () => {
+        if (items.length === 0) {
+          items = [
+            {
+              id: 'late-1',
+              title: 'Late-loaded tomato soup',
+              href: 'https://gemini.google.com/app/late-1',
+            },
+          ];
+        }
+      },
+    };
+
+    const outcome = await searchGemini({
+      query: 'tomato',
+      helpers,
+      platformBudgetMs: 8000,
+      sleepImpl: async () => {},
+      waitForReadyImpl: async () => true,
+    });
+
+    expect(outcome.status).toBe('ready');
+    expect(outcome.results[0].title).toMatch(/tomato/i);
   });
 
   it('returns ready with partial hits even when coverage is truncated', async () => {
@@ -175,6 +254,7 @@ describe('gemini coverage honesty', () => {
       maxItems: 50,
       growthTitle: 'Extra older tomato notes',
       hasAccountChip: true,
+      hasHistoryRail: true,
     });
 
     const outcome = await searchGemini({
@@ -195,10 +275,11 @@ describe('gemini coverage honesty', () => {
     expect(outcome.results.every((r) => r.title.toLowerCase().includes('tomato'))).toBe(true);
   });
 
-  it('returns empty only when coverage is established and there are no matches', async () => {
+  it('returns empty when rail is proven and there are no title matches', async () => {
     const helpers = makeHelpers({
       items: loadFixture('history.empty.stub.json'),
       hasAccountChip: true,
+      hasHistoryRail: true,
     });
 
     const outcome = await searchGemini({
@@ -213,12 +294,31 @@ describe('gemini coverage honesty', () => {
     expect(outcome.capability).toBe('title-match');
   });
 
-  it('returns login_required for sign-in shell', async () => {
+  it('returns empty when rail has items but none match the title filter', async () => {
+    const helpers = makeHelpers({
+      items: loadFixture('history.hits.stub.json'),
+      hasAccountChip: true,
+      hasHistoryRail: true,
+    });
+
+    const outcome = await searchGemini({
+      query: 'zzzz-no-such-chat',
+      helpers,
+      platformBudgetMs: 8000,
+      sleepImpl: async () => {},
+      waitForReadyImpl: async () => true,
+    });
+
+    expect(outcome.status).toBe('empty');
+  });
+
+  it('returns login_required for full S5 sign-in shell', async () => {
     const helpers = makeHelpers({
       items: [],
       signInVisible: true,
       signInToSaveVisible: true,
       hasAccountChip: false,
+      hasHistoryRail: false,
       loginOnly: true,
     });
 
@@ -234,6 +334,27 @@ describe('gemini coverage honesty', () => {
     expect(outcome.message).toMatch(/Please log in to Gemini/);
   });
 
+  it('returns unavailable for one-signal login shell', async () => {
+    const helpers = makeHelpers({
+      items: [],
+      signInVisible: true,
+      signInToSaveVisible: false,
+      hasAccountChip: false,
+      hasHistoryRail: false,
+      loginOnly: true,
+    });
+
+    const outcome = await searchGemini({
+      query: 'x',
+      helpers,
+      sleepImpl: async () => {},
+      waitForReadyImpl: async () => true,
+    });
+
+    expect(outcome.status).toBe('unavailable');
+    expect(outcome.errorCode).toBe('auth_ambiguous');
+  });
+
   it('caps after title filter, not before (SC-6)', async () => {
     const many = [];
     for (let i = 0; i < 30; i += 1) {
@@ -243,7 +364,7 @@ describe('gemini coverage honesty', () => {
         href: `https://gemini.google.com/app/id-${i}`,
       });
     }
-    const helpers = makeHelpers({ items: many, hasAccountChip: true });
+    const helpers = makeHelpers({ items: many, hasAccountChip: true, hasHistoryRail: true });
 
     const outcome = await searchGemini({
       query: 'tomato',
@@ -264,6 +385,7 @@ describe('gemini coverage honesty', () => {
     const helpers = makeHelpers({
       items: loadFixture('history.hits.stub.json'),
       hasAccountChip: true,
+      hasHistoryRail: true,
     });
 
     await expect(
@@ -278,10 +400,11 @@ describe('gemini coverage honesty', () => {
 });
 
 describe('scanGeminiHistory', () => {
-  it('stops after consecutive no-growth rounds with coverage ok', async () => {
+  it('stops after consecutive no-growth rounds with coverage ok when items exist', async () => {
     const helpers = makeHelpers({
       items: [{ id: 'a', title: 'A', href: 'https://gemini.google.com/app/a' }],
       growthPerScroll: 0,
+      hasHistoryRail: true,
     });
     const scan = await scanGeminiHistory({
       helpers,
@@ -292,11 +415,27 @@ describe('scanGeminiHistory', () => {
     expect(scan.items).toHaveLength(1);
   });
 
+  it('marks rail_missing when zero items and rail not proven', async () => {
+    const helpers = makeHelpers({
+      items: [],
+      growthPerScroll: 0,
+      hasHistoryRail: false,
+    });
+    const scan = await scanGeminiHistory({
+      helpers,
+      platformBudgetMs: 8000,
+      sleepImpl: async () => {},
+    });
+    expect(scan.coverage).toBe('rail_missing');
+    expect(scan.errorCode).toBe('history_rail_missing');
+  });
+
   it('marks soft_ceiling when item soft cap is hit', async () => {
     const helpers = makeHelpers({
       items: [],
       growthPerScroll: 20,
       maxItems: 200,
+      hasHistoryRail: true,
     });
     const scan = await scanGeminiHistory({
       helpers,

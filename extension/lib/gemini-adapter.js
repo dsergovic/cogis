@@ -70,6 +70,10 @@ function sleep(ms, signal) {
 
 /**
  * Classify Gemini auth from DOM signals (S5).
+ * S5 authorizes `login_required` only when Sign-in CTAs **and**
+ * “Sign in to save activity” are both present without owner signals.
+ * A lone sign-in or save-activity signal without the other is ambiguous →
+ * `unavailable` (not login_required).
  * @param {{
  *   signInVisible: boolean,
  *   signInToSaveVisible: boolean,
@@ -80,18 +84,18 @@ function sleep(ms, signal) {
  */
 export function classifyGeminiAuth(input) {
   const { signInVisible, signInToSaveVisible, hasHistoryItems, hasAccountChip } = input;
+  const hasOwnerSignals = hasHistoryItems || hasAccountChip;
 
-  // Logged out: Sign in CTAs + "Sign in to save activity" without owner signals.
-  if ((signInVisible || signInToSaveVisible) && !hasHistoryItems && !hasAccountChip) {
-    return 'login_required';
-  }
-  if (hasHistoryItems || hasAccountChip) {
+  if (hasOwnerSignals) {
     return 'authenticated';
   }
-  // Ambiguous shell (no history, no login upsell, no account chip).
-  if (signInVisible || signInToSaveVisible) {
+
+  // S5 combination: both login upsell signals, no owner signals.
+  if (signInVisible && signInToSaveVisible) {
     return 'login_required';
   }
+
+  // Ambiguous: zero owner signals, and not the full login shell.
   return 'unavailable';
 }
 
@@ -129,6 +133,7 @@ export function normalizeGeminiHistoryItems(items) {
  *   accountChip?: string,
  *   historyItem?: string,
  *   historyScrollContainer?: string,
+ *   emptyHistoryState?: string,
  * }} selectors
  */
 export function createGeminiDomHelpers(doc, selectors) {
@@ -143,6 +148,7 @@ export function createGeminiDomHelpers(doc, selectors) {
     'img[alt*="Google Account" i], button[aria-label*="Google Account" i], a[aria-label*="Google Account" i]';
   const itemSel = selectors.historyItem || 'a[href*="/app/"]';
   const scrollSel = selectors.historyScrollContainer || '';
+  const emptyStateSel = selectors.emptyHistoryState || '';
 
   function isVisible(el) {
     if (!el) return false;
@@ -181,46 +187,100 @@ export function createGeminiDomHelpers(doc, selectors) {
     return false;
   }
 
-  return {
-    isSignInVisible: () => anyVisible(signInSel),
-    isSignInToSaveVisible: () => textIncludesSignInToSave(),
-    hasAccountChip: () => anyVisible(accountSel),
-    collectHistoryItems: () => {
-      /** @type {Record<string, unknown>[]} */
-      const out = [];
-      const seen = new Set();
+  function hasEmptyHistoryState() {
+    if (emptyStateSel) {
       try {
-        const nodes = doc.querySelectorAll(itemSel);
+        const nodes = doc.querySelectorAll(emptyStateSel);
         for (const node of nodes) {
-          let href = null;
-          try {
-            const Anchor = globalThis.HTMLAnchorElement;
-            if (typeof Anchor === 'function' && node instanceof Anchor) {
-              href = node.href || null;
-            }
-          } catch {
-            href = null;
-          }
-          if (!href) {
-            href =
-              node.getAttribute?.('href') || (typeof node.href === 'string' ? node.href : null);
-          }
-          const id = extractGeminiConversationId(href);
-          if (!id || seen.has(id)) continue;
-          // Skip bare /app home link.
-          if (/\/app\/?$/i.test(String(href || '').split('?')[0])) continue;
-          const title = String(node.textContent || node.getAttribute?.('aria-label') || '')
-            .replace(/\s+/g, ' ')
-            .trim();
-          if (!title) continue;
-          seen.add(id);
-          out.push({ id, title, href });
+          if (isVisible(node)) return true;
         }
       } catch {
         // ignore
       }
-      return out;
+    }
+    // Heuristic empty-state copy when the rail is present but has no chats.
+    try {
+      const nodes = doc.querySelectorAll('p, span, div, li, [role="status"]');
+      for (const node of nodes) {
+        if (!isVisible(node)) continue;
+        const text = String(node.textContent || '')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .toLowerCase();
+        if (!text || text.length > 80) continue;
+        if (
+          text.includes('no recent') ||
+          text.includes('no chats') ||
+          text.includes('no conversations') ||
+          text === 'no activity'
+        ) {
+          return true;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return false;
+  }
+
+  function collectHistoryItems() {
+    /** @type {Record<string, unknown>[]} */
+    const out = [];
+    const seen = new Set();
+    try {
+      const nodes = doc.querySelectorAll(itemSel);
+      for (const node of nodes) {
+        let href = null;
+        try {
+          const Anchor = globalThis.HTMLAnchorElement;
+          if (typeof Anchor === 'function' && node instanceof Anchor) {
+            href = node.href || null;
+          }
+        } catch {
+          href = null;
+        }
+        if (!href) {
+          href = node.getAttribute?.('href') || (typeof node.href === 'string' ? node.href : null);
+        }
+        const id = extractGeminiConversationId(href);
+        if (!id || seen.has(id)) continue;
+        // Skip bare /app home link.
+        if (/\/app\/?$/i.test(String(href || '').split('?')[0])) continue;
+        const title = String(node.textContent || node.getAttribute?.('aria-label') || '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (!title) continue;
+        seen.add(id);
+        out.push({ id, title, href });
+      }
+    } catch {
+      // ignore
+    }
+    return out;
+  }
+
+  return {
+    isSignInVisible: () => anyVisible(signInSel),
+    isSignInToSaveVisible: () => textIncludesSignInToSave(),
+    hasAccountChip: () => anyVisible(accountSel),
+    /**
+     * Positive proof that the history surface is present (items, configured
+     * scroll root, or empty-history copy). Account chip alone is not enough.
+     */
+    hasHistoryRail: () => {
+      if (collectHistoryItems().length > 0) return true;
+      if (hasEmptyHistoryState()) return true;
+      if (scrollSel) {
+        try {
+          const el = doc.querySelector(scrollSel);
+          if (el && isVisible(el)) return true;
+        } catch {
+          // ignore
+        }
+      }
+      return false;
     },
+    collectHistoryItems,
     getScrollRoot: () => {
       if (scrollSel) {
         try {
@@ -310,10 +370,27 @@ export async function scanGeminiHistory(opts) {
 
   ingest(helpers.collectHistoryItems());
 
+  const railProven = () =>
+    byId.size > 0 ||
+    (typeof helpers.hasHistoryRail === 'function' ? helpers.hasHistoryRail() : false);
+
   let rounds = 0;
   let stableRounds = 0;
-  let coverage = 'ok';
-  let errorCode;
+  /** @type {string} */
+  let coverage = 'rail_missing';
+  let errorCode = 'history_rail_missing';
+
+  const settleStableEnd = () => {
+    // Zero-item DOM scans are not self-proving (unlike HTTP 200 + []). Require
+    // a positive rail / empty-state signal before coverage can be `ok`.
+    if (byId.size === 0 && !railProven()) {
+      coverage = 'rail_missing';
+      errorCode = 'history_rail_missing';
+      return;
+    }
+    coverage = 'ok';
+    errorCode = undefined;
+  };
 
   while (rounds < maxRounds) {
     throwIfAborted(signal);
@@ -337,10 +414,9 @@ export async function scanGeminiHistory(opts) {
 
     if (byId.size === before) {
       stableRounds += 1;
-      // Two consecutive no-growth rounds ⇒ end of virtualized list.
+      // Two consecutive no-growth rounds ⇒ end of virtualized list (or empty rail).
       if (stableRounds >= 2) {
-        coverage = 'ok';
-        errorCode = undefined;
+        settleStableEnd();
         break;
       }
     } else {
@@ -348,9 +424,20 @@ export async function scanGeminiHistory(opts) {
     }
 
     if (rounds >= maxRounds) {
-      coverage = 'soft_ceiling';
-      errorCode = 'history_soft_ceiling';
+      if (byId.size === 0 && !railProven()) {
+        coverage = 'rail_missing';
+        errorCode = 'history_rail_missing';
+      } else {
+        coverage = 'soft_ceiling';
+        errorCode = 'history_soft_ceiling';
+      }
     }
+  }
+
+  // No scroll rounds ran (budget already spent) with zero items and no rail.
+  if (rounds === 0 && byId.size === 0 && coverage !== 'budget_exhausted' && !railProven()) {
+    coverage = 'rail_missing';
+    errorCode = 'history_rail_missing';
   }
 
   return {
@@ -413,16 +500,15 @@ export async function searchGemini(input) {
       };
     }
 
-    // Wait briefly for either history links or a login shell to appear.
+    // Wait for history rail / empty-state OR the full S5 login shell — not chip alone.
     const root = doc?.documentElement || doc?.body;
     if (root && waitForReadyImpl) {
       await waitForReadyImpl({
         root,
         isReady: () =>
           helpers.collectHistoryItems().length > 0 ||
-          helpers.isSignInVisible() ||
-          helpers.isSignInToSaveVisible() ||
-          helpers.hasAccountChip(),
+          (typeof helpers.hasHistoryRail === 'function' && helpers.hasHistoryRail()) ||
+          (helpers.isSignInVisible() && helpers.isSignInToSaveVisible()),
         timeoutMs: Math.min(2500, Math.max(400, platformBudgetMs * 0.35)),
         pollMs: 150,
         signal,

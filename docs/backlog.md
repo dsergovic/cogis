@@ -25,7 +25,7 @@ Add new rows at the top of the relevant section. Prefer one line + link to PR/is
 
 | ID | Status | Item | Notes |
 | --- | --- | --- | --- |
-| BL-001 | deferred | **Tab close on cancel race** | When Cogis auto-opens a ChatGPT tab, fire-and-forget cancel/`tabs.remove` can race a superseding search that already adopted the tab → brief `unavailable` on rapid A→B search. Optional tab-litter cleanup. **Human accepted deferral after full M1 smoke (2026-07-28).** Fix: skip close while a newer `requestId` is active, or drop auto-close. |
+| BL-001 | deferred | **Tab close on cancel race** | When Cogis auto-opens a lab tab, fire-and-forget cancel/`tabs.remove` can race a superseding search that already adopted the tab → brief `unavailable` on rapid A→B search. Optional tab-litter cleanup. **Human accepted deferral after full M1 smoke (2026-07-28).** Fix: skip close while a newer `requestId` is active, await prior cancel, or drop auto-close. **M4 dual-review (PR #13):** SC-9 evidence narrowed to content abort + tracker late-drop; this race remains deferred (not claimed fixed). |
 | BL-002 | open | **SW / popup orchestration tests** | Unit suite covers pure helpers + WAR graph; little/no direct `chrome.runtime` / `chrome.tabs` / popup watchdog coverage. Gap that hid timeout and tab races in review. Add mocked-chrome tests when touching SW next. |
 | BL-003 | open | **Live redacted fixtures** | M1 shipped stub fixtures. After successful local smokes, optionally replace with redacted live session/search shapes and pin confirmed `query` vs `q` in `local-pack` if not already locked in code. |
 | BL-004 | open | **Icons** | Placeholder icons OK for dev-unpacked; replace before any store/public packaging. |
