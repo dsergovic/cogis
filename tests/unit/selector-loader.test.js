@@ -8,6 +8,8 @@ import {
   getSelectorPackStatus,
   isAllowlistedRemotePackUrl,
   isDataOnlyPack,
+  isSafeRelativeEndpointPath,
+  isSameHostUrlPattern,
   isValidRemotePlatformOverlay,
   loadSelectorPack,
   mergeSelectorPacks,
@@ -19,6 +21,10 @@ import localPack from '../../extension/lib/selectors/local-pack.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const loaderSrc = readFileSync(join(root, 'extension/lib/selectors/loader.js'), 'utf8');
+const chatgptContentSrc = readFileSync(join(root, 'extension/content/chatgpt.js'), 'utf8');
+const perplexityContentSrc = readFileSync(join(root, 'extension/content/perplexity.js'), 'utf8');
+const claudeContentSrc = readFileSync(join(root, 'extension/content/claude.js'), 'utf8');
+const geminiContentSrc = readFileSync(join(root, 'extension/content/gemini.js'), 'utf8');
 
 function okResponse(body, status = 200) {
   return {
@@ -68,6 +74,51 @@ describe('selector loader', () => {
     expect(isValidRemotePlatformOverlay({ chatgpt: { notes: 'nope' } })).toBe(false);
     expect(isValidRemotePlatformOverlay({ chatgpt: { selectors: { a: 1 } } })).toBe(false);
     expect(isValidRemotePlatformOverlay({ chatgpt: { pageSize: 20 } })).toBe(false);
+  });
+
+  it('rejects absolute or off-host endpoint/URL overlays (B1)', () => {
+    expect(isSafeRelativeEndpointPath('/backend-api/conversations/search')).toBe(true);
+    expect(isSafeRelativeEndpointPath('https://evil.example/collect')).toBe(false);
+    expect(isSafeRelativeEndpointPath('//evil.example/collect')).toBe(false);
+    expect(
+      isSameHostUrlPattern('https://chatgpt.com/c/{id}', localPack.platforms.chatgpt.origin),
+    ).toBe(true);
+    expect(
+      isSameHostUrlPattern('https://evil.example/c/{id}', localPack.platforms.chatgpt.origin),
+    ).toBe(false);
+
+    expect(
+      isValidRemotePlatformOverlay({
+        chatgpt: { endpoints: { search: 'https://evil.example/collect' } },
+      }),
+    ).toBe(false);
+    expect(
+      isValidRemotePlatformOverlay({
+        chatgpt: { endpoints: { search: '/backend-api/conversations/search-v2' } },
+      }),
+    ).toBe(true);
+    expect(
+      isValidRemotePlatformOverlay({
+        chatgpt: { origin: 'https://evil.example' },
+      }),
+    ).toBe(false);
+  });
+
+  it('refresh fails closed to local when remote endpoint retargets off-host (B1)', async () => {
+    const fetchImpl = vi.fn(async () =>
+      okResponse({
+        version: '9.9.9',
+        platforms: {
+          chatgpt: { endpoints: { search: 'https://evil.example/collect' } },
+        },
+      }),
+    );
+    await refreshSelectorPack({ fetchImpl });
+    expect(getSelectorPackStatus().source).toBe('local');
+    expect(getSelectorPackStatus().lastErrorCode).toBe('malformed');
+    expect(getPlatformSelectors('chatgpt').endpoints.search).toBe(
+      localPack.platforms.chatgpt.endpoints.search,
+    );
   });
 
   it('allowlists only the HTTPS cogis.ai packs path', () => {
@@ -227,6 +278,36 @@ describe('selector loader', () => {
     expect(getPlatformSelectors('gemini').selectors.historyItem).toBe(
       localPack.platforms.gemini.selectors.historyItem,
     );
+  });
+
+  it('refresh fails closed on hung fetch without waiting forever (B2)', async () => {
+    const fetchImpl = vi.fn(
+      () =>
+        new Promise(() => {
+          /* never settles; ignores abort */
+        }),
+    );
+    const started = Date.now();
+    const pack = await refreshSelectorPack({ fetchImpl, timeoutMs: 40 });
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(pack.version).toBe(localPack.version);
+    expect(getSelectorPackStatus().source).toBe('local');
+    expect(getSelectorPackStatus().lastErrorCode).toBe('fetch_timeout');
+  });
+
+  it('content scripts hydrate local pack without awaiting refresh (B2)', () => {
+    for (const src of [
+      chatgptContentSrc,
+      perplexityContentSrc,
+      claudeContentSrc,
+      geminiContentSrc,
+    ]) {
+      expect(src).toContain('hydrateFromPack();');
+      expect(src).toMatch(/refreshSelectorPack\(refreshOpts\)\.then\(hydrateFromPack/);
+      expect(src).not.toMatch(
+        /return loaderMod\s*\n?\s*\.refreshSelectorPack\(refreshOpts\)\s*\n?\s*\.then\(hydrateFromPack,\s*hydrateFromPack\)/,
+      );
+    }
   });
 
   it('does not contain eval, Function constructor, or dynamic remote import', () => {

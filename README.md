@@ -68,7 +68,7 @@ Popup footnote: _Some AIs do not support full-text search._
 
 ## Selector pack (M5)
 
-Bundled `extension/lib/selectors/local-pack.json` (mirrored by `local-pack.js`) is always enough to search. On startup (and when a content script first loads its adapter), the extension may HTTPS-fetch an optional data-only hotfix from `https://cogis.ai/packs/selectors.json`. The remote document may overlay CSS selectors, wait-predicate strings, and URL/endpoint path strings only. Fetch or parse failure, and any executable-looking payload, **fail closed to the local pack** — search is never blocked. No `eval`, `new Function`, or remote code import. Pack version / source are exposed via `getSelectorPackStatus()` for the M6 debug panel.
+Bundled `extension/lib/selectors/local-pack.json` (mirrored by `local-pack.js`) is always enough to search. On startup (and when a content script first loads its adapter), the extension may HTTPS-fetch an optional data-only hotfix from `https://cogis.ai/packs/selectors.json` in the background with a short fetch timeout. The remote document may overlay CSS selectors, wait-predicate strings, and same-host URL / relative endpoint path strings only — absolute off-host endpoints are rejected. Fetch or parse failure, timeout, and any executable-looking payload **fail closed to the local pack**; content scripts hydrate from local immediately so **search is never blocked** on the remote fetch. No `eval`, `new Function`, or remote code import. Pack version / source are exposed via `getSelectorPackStatus()` for the M6 debug panel.
 
 ## Privacy & ToS
 

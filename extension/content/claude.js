@@ -52,6 +52,8 @@
                 }
                 return adapterMod;
               }
+              // Local pack first — never block search on a hung remote pack fetch (B2).
+              hydrateFromPack();
               var refreshOpts = {
                 fetchImpl:
                   typeof fetch === 'function'
@@ -60,9 +62,8 @@
                         return Promise.reject(new TypeError('fetch unavailable'));
                       },
               };
-              return loaderMod
-                .refreshSelectorPack(refreshOpts)
-                .then(hydrateFromPack, hydrateFromPack);
+              loaderMod.refreshSelectorPack(refreshOpts).then(hydrateFromPack, function () {});
+              return adapterMod;
             },
           );
         })

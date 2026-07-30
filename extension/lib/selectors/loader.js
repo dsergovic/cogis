@@ -6,6 +6,9 @@ import localPack from './local-pack.js';
  */
 export const REMOTE_PACK_URL = 'https://cogis.ai/packs/selectors.json';
 
+/** Cap remote pack fetch so a hung cogis.ai cannot stall search (B2). */
+export const REMOTE_PACK_FETCH_TIMEOUT_MS = 1500;
+
 /** Keys that must never appear in a remote / merged pack payload. */
 const FORBIDDEN_KEYS = Object.freeze([
   'script',
@@ -134,35 +137,80 @@ function isStringMap(value) {
 }
 
 /**
+ * Relative lab path only — blocks absolute / protocol-relative retargets (B1).
  * @param {unknown} value
  * @returns {boolean}
  */
-function isEndpointMap(value) {
-  if (!isPlainObject(value)) return false;
-  return Object.values(value).every(
-    (v) =>
-      typeof v === 'string' || (Array.isArray(v) && v.every((item) => typeof item === 'string')),
-  );
+export function isSafeRelativeEndpointPath(value) {
+  if (typeof value !== 'string' || !value) return false;
+  if (!value.startsWith('/') || value.startsWith('//')) return false;
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value)) return false;
+  return true;
 }
 
 /**
- * Validate remote platform overlays are data-only string fields.
- * @param {unknown} platforms
+ * @param {unknown} value
  * @returns {boolean}
  */
-export function isValidRemotePlatformOverlay(platforms) {
+function isSafeRelativeEndpointMap(value) {
+  if (!isPlainObject(value)) return false;
+  return Object.values(value).every((v) => {
+    if (typeof v === 'string') return isSafeRelativeEndpointPath(v);
+    if (Array.isArray(v)) return v.every((item) => isSafeRelativeEndpointPath(item));
+    return false;
+  });
+}
+
+/**
+ * HTTPS URL/pattern whose host matches the local platform origin (B1).
+ * Template tokens like `{id}` are substituted for parsing only.
+ * @param {unknown} value
+ * @param {string} localOrigin
+ * @returns {boolean}
+ */
+export function isSameHostUrlPattern(value, localOrigin) {
+  if (typeof value !== 'string' || !value || typeof localOrigin !== 'string') return false;
+  try {
+    const allowed = new URL(localOrigin);
+    const normalized = value.replace(/\{[^}]+\}/g, 'x');
+    const parsed = new URL(normalized);
+    return (
+      parsed.protocol === 'https:' &&
+      parsed.hostname === allowed.hostname &&
+      !parsed.username &&
+      !parsed.password
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Validate remote platform overlays are data-only and cannot retarget lab traffic.
+ * @param {unknown} platforms
+ * @param {typeof localPack} [local]
+ * @returns {boolean}
+ */
+export function isValidRemotePlatformOverlay(platforms, local = localPack) {
   if (!isPlainObject(platforms)) return false;
-  for (const platform of Object.values(platforms)) {
+  if (!isPlainObject(local?.platforms)) return false;
+
+  for (const [platformId, platform] of Object.entries(platforms)) {
     if (!isPlainObject(platform)) return false;
+    const localPlatform = local.platforms[platformId];
+    if (!isPlainObject(localPlatform) || typeof localPlatform.origin !== 'string') return false;
+
     for (const key of Object.keys(platform)) {
       if (!ALLOWED_PLATFORM_OVERLAY_KEYS.includes(key)) return false;
     }
     if ('selectors' in platform && !isStringMap(platform.selectors)) return false;
     if ('waitPredicates' in platform && !isStringMap(platform.waitPredicates)) return false;
     for (const urlKey of ['deepLinkPattern', 'prefillPattern', 'origin', 'loginUrl']) {
-      if (urlKey in platform && typeof platform[urlKey] !== 'string') return false;
+      if (urlKey in platform && !isSameHostUrlPattern(platform[urlKey], localPlatform.origin)) {
+        return false;
+      }
     }
-    if ('endpoints' in platform && !isEndpointMap(platform.endpoints)) return false;
+    if ('endpoints' in platform && !isSafeRelativeEndpointMap(platform.endpoints)) return false;
   }
   return true;
 }
@@ -189,11 +237,14 @@ export function mergeSelectorPacks(local, remote) {
       target.waitPredicates = { ...(target.waitPredicates || {}), ...overlay.waitPredicates };
     }
     for (const urlKey of ['deepLinkPattern', 'prefillPattern', 'origin', 'loginUrl']) {
-      if (typeof overlay[urlKey] === 'string') {
+      if (
+        typeof overlay[urlKey] === 'string' &&
+        isSameHostUrlPattern(overlay[urlKey], target.origin)
+      ) {
         target[urlKey] = overlay[urlKey];
       }
     }
-    if (isEndpointMap(overlay.endpoints)) {
+    if (isSafeRelativeEndpointMap(overlay.endpoints)) {
       target.endpoints = { ...(target.endpoints || {}), ...overlay.endpoints };
     }
   }
@@ -215,7 +266,7 @@ export function parseRemotePackText(text) {
     return null;
   }
   if (!isDataOnlyPack(parsed)) return null;
-  if (!isValidRemotePlatformOverlay(parsed.platforms)) return null;
+  if (!isValidRemotePlatformOverlay(parsed.platforms, localPack)) return null;
   return /** @type {{ version: string, platforms: Record<string, Record<string, unknown>> }} */ (
     parsed
   );
@@ -265,13 +316,14 @@ function failClosedToLocal(errorCode) {
 
 /**
  * Optional HTTPS fetch + merge from the allowlisted cogis.ai path.
- * Fail-closed: any network, parse, shape, or executable-key failure keeps the local pack.
+ * Fail-closed: any network, timeout, parse, shape, or executable-key failure keeps the local pack.
  * Never evaluates remote strings as code and never loads remote modules.
  *
  * @param {{
  *   fetchImpl?: typeof fetch,
  *   remoteUrl?: string,
  *   now?: () => number,
+ *   timeoutMs?: number,
  * }} [options]
  * @returns {Promise<typeof localPack>}
  */
@@ -281,6 +333,10 @@ export async function refreshSelectorPack(options = {}) {
   refreshInFlight = (async () => {
     const fetchImpl = options.fetchImpl ?? globalThis.fetch;
     const remoteUrl = options.remoteUrl ?? REMOTE_PACK_URL;
+    const timeoutMs =
+      typeof options.timeoutMs === 'number' && options.timeoutMs >= 0
+        ? options.timeoutMs
+        : REMOTE_PACK_FETCH_TIMEOUT_MS;
 
     if (!isAllowlistedRemotePackUrl(remoteUrl)) {
       failClosedToLocal('url_not_allowlisted');
@@ -292,17 +348,38 @@ export async function refreshSelectorPack(options = {}) {
       return activePack;
     }
 
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+
     let response;
     try {
-      response = await fetchImpl(remoteUrl, {
+      const fetchPromise = fetchImpl(remoteUrl, {
         method: 'GET',
         credentials: 'omit',
         cache: 'no-store',
         headers: { Accept: 'application/json' },
+        signal: controller.signal,
       });
+      const timeoutPromise = new Promise((_, reject) => {
+        const onAbort = () => {
+          reject(Object.assign(new Error('selector pack fetch timeout'), { name: 'AbortError' }));
+        };
+        if (controller.signal.aborted) {
+          onAbort();
+          return;
+        }
+        controller.signal.addEventListener('abort', onAbort, { once: true });
+      });
+      response = await Promise.race([fetchPromise, timeoutPromise]);
     } catch {
-      failClosedToLocal('fetch_failed');
+      failClosedToLocal(timedOut || controller.signal.aborted ? 'fetch_timeout' : 'fetch_failed');
       return activePack;
+    } finally {
+      clearTimeout(timer);
     }
 
     if (!response || !response.ok) {
@@ -328,7 +405,7 @@ export async function refreshSelectorPack(options = {}) {
           errorCode = 'malformed';
         } else if (!isDataOnlyPack(probe)) {
           errorCode = 'rejected_exec';
-        } else if (!isValidRemotePlatformOverlay(probe.platforms)) {
+        } else if (!isValidRemotePlatformOverlay(probe.platforms, localPack)) {
           errorCode = 'malformed';
         }
       } catch {
