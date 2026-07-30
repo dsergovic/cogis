@@ -14,6 +14,13 @@ Single-purpose Chrome Manifest V3 extension that searches the user's own convers
 | M4        | Gemini                                             | Not started     |
 | M5–M6     | Selector pack remote merge, debug panel            | Not started     |
 
+## Docs
+
+- [`docs/agent_blueprint.md`](./docs/agent_blueprint.md) — binding Phase 1 blueprint: architecture, behavioral acceptance criteria, escalation list
+- [`docs/spikes/`](./docs/spikes/README.md) — S1–S6 lab contract findings
+- [`docs/handoff-prompts.md`](./docs/handoff-prompts.md) — **official source of truth** for milestone hand-off prompts: implementer (Cursor) and dual-review (Perplexity Computer). Operator-only; not agent context
+- [`docs/backlog.md`](./docs/backlog.md) — deferred follow-ups (`BL-0xx`)
+
 ## Load unpacked
 
 1. Open `chrome://extensions`
