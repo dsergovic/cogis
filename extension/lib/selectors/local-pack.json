@@ -1,5 +1,5 @@
 {
-  "version": "1.2.0",
+  "version": "1.3.0",
   "platforms": {
     "chatgpt": {
       "origin": "https://chatgpt.com",
@@ -56,6 +56,20 @@
       "pageSize": 20,
       "projectListQuery": { "limit": 8 },
       "notes": "Endpoint-first per S2: GET organizations → paginated chat_conversations (client title-match after full-page normalize) → Projects directory + per-project conversations (breadth-first page-1 then deepen, budget-capped). Deep link https://claude.ai/chat/{uuid}. Prefill not supported. Capability title-match. Soft caps: root ~100 / per-project ~60 still authorize empty by design (BL-024). Failure/budget/failed-project truncation → unavailable/timeout not empty (BL-022). DOM Recents search fallback deferred (BL-023). include_harmony_projects omitted until live-proven."
+    },
+    "gemini": {
+      "origin": "https://gemini.google.com",
+      "loginUrl": "https://gemini.google.com/app",
+      "deepLinkPattern": "https://gemini.google.com/app/{id}",
+      "selectors": {
+        "signIn": "a[href*=\"accounts.google.com\"], button[aria-label*=\"Sign in\" i], a[aria-label*=\"Sign in\" i]",
+        "signInToSaveActivity": "button, a, p, span, div",
+        "accountChip": "img[alt*=\"Google Account\" i], button[aria-label*=\"Google Account\" i], a[aria-label*=\"Google Account\" i]",
+        "historyItem": "a[href*=\"/app/\"]",
+        "historyScrollContainer": ""
+      },
+      "endpoints": {},
+      "notes": "DOM-first per S4: no stable first-party history search endpoint at desk. Title-match on history rail links (/app/{id}). Prefill none — cascade deep link → https://gemini.google.com/app. Soft reach ceiling: HISTORY_SCROLL_MAX_ROUNDS (~8) / HISTORY_ITEM_SOFT_CAP (~120) still authorize empty by design when the scanned window has no title match (unread older history is a platform limit). Incomplete scroll (budget exhausted mid-scan) → timeout/unavailable, not empty. Selectors are stub-level pending live polish (highest churn platform; M5 pack). Gems/folders: any visible /app/ history links are collected; no invented Projects clone."
     }
   }
 }

@@ -45,6 +45,9 @@ Add new rows at the top of the relevant section. Prefer one line + link to PR/is
 | BL-022 | open | **M3 Claude Projects live confirmation** | Projects directory + `…/projects/{id}/conversations` inferred (S2 residual #2). Adapter keeps ladder (breadth-first page-1) but treats directory/all-fetch/truncated/budget-skip as coverage-unproven → `unavailable`/`timeout` (not false `empty`). Confirm routes in Network tab; then tighten README and drop caveat. |
 | BL-023 | open | **M3 Claude DOM Recents fallback** | S2/blueprint mention DOM Recents/search fallback; M3 ships endpoint-only (M1/M2 precedent). Discuss before calling M3 complete if live endpoints drift; optional content-script Recents filter. |
 | BL-024 | open | **M3 Claude soft page-ceiling empty copy** | Soft root (~100) / per-project (~60) caps still authorize `empty` by design (pass-4 product call; Codex would gate). Options: (1) docs-only — current; (2) `empty` + legible “most recent ~N” copy/errorCode; (3) treat ceiling like truncated (never empty). Parent prefers (1) now, optional (2) later. |
+| BL-025 | open | **M4 Gemini live selector polish** | S4 residual #1: thinnest platform / highest CSS churn. Pack selectors are stub-level (`historyItem` = `a[href*="/app/"]`). Confirm against a logged-in personal account; tighten `local-pack` without changing honesty rules. |
+| BL-026 | open | **M4 Gemini multi-account / chooser** | S4 residual #3: Google account chooser may confuse which session a background tab uses. Documented limitation; optional future: prefer active Gemini tab’s account chip over opening a new tab. |
+| BL-027 | open | **M4 Gemini deep-link fragility** | S4 residual #2: occasional `/app/{id}` breakage after Google-side changes. Cascade already falls back to `https://gemini.google.com/app`. Re-verify in operator smoke; no fake deep links. |
 
 ## Cross-cutting / later milestones
 
@@ -72,3 +75,4 @@ Add new rows at the top of the relevant section. Prefer one line + link to PR/is
 | 2026-07-29 | BL-020 per-lab collapse toggle; BL-021 gated Spaces follow-up after M2 scope narrow. |
 | 2026-07-29 | BL-022 Claude Projects live confirmation; BL-023 Claude DOM Recents fallback (M3 review). |
 | 2026-07-29 | BL-024 Claude soft page-ceiling empty copy (pass-4 product call). |
+| 2026-07-29 | BL-025/026/027 Gemini live selectors, multi-account chooser, deep-link fragility (M4 S4 residuals). |

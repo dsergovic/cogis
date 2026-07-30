@@ -4,6 +4,8 @@ import {
   pendingTerminalPlatforms,
   shouldWatchdogTimeout,
   shouldCloseSearchTab,
+  shouldReloadLabTab,
+  pickLabTabCandidate,
 } from '../../extension/lib/orchestration.js';
 import {
   PLATFORM_TIMEOUT_MS,
@@ -45,10 +47,13 @@ describe('resolveWallExpiry', () => {
 });
 
 describe('pendingTerminalPlatforms', () => {
-  it('filters completed platforms', () => {
-    expect(pendingTerminalPlatforms(['chatgpt', 'claude'], new Set(['chatgpt']))).toEqual([
-      'claude',
-    ]);
+  it('filters completed platforms across the four-platform fan-out', () => {
+    expect(
+      pendingTerminalPlatforms(
+        ['chatgpt', 'perplexity', 'claude', 'gemini'],
+        new Set(['chatgpt', 'claude']),
+      ),
+    ).toEqual(['perplexity', 'gemini']);
   });
 });
 
@@ -97,5 +102,25 @@ describe('shouldCloseSearchTab', () => {
     expect(shouldCloseSearchTab({ createdByUs: true, tabId: 3 })).toBe(true);
     expect(shouldCloseSearchTab({ createdByUs: false, tabId: 3 })).toBe(false);
     expect(shouldCloseSearchTab({ createdByUs: true, tabId: null })).toBe(false);
+  });
+});
+
+describe('lab tab adoption (SC-7 / SC-8)', () => {
+  it('reloads discarded or unloaded tabs', () => {
+    expect(shouldReloadLabTab({ discarded: true, status: 'complete' })).toBe(true);
+    expect(shouldReloadLabTab({ discarded: false, status: 'unloaded' })).toBe(true);
+    expect(shouldReloadLabTab({ discarded: false, status: 'complete' })).toBe(false);
+  });
+
+  it('prefers a non-discarded candidate when adopting', () => {
+    expect(
+      pickLabTabCandidate([
+        { id: 1, discarded: true, status: 'unloaded' },
+        { id: 2, discarded: false, status: 'complete' },
+      ]),
+    ).toEqual({ id: 2, discarded: false, status: 'complete' });
+
+    expect(pickLabTabCandidate([{ id: 9, discarded: true }])?.id).toBe(9);
+    expect(pickLabTabCandidate([])).toBeNull();
   });
 });

@@ -236,5 +236,33 @@ describe('resolveResultHref cascade', () => {
         'x',
       ),
     ).toBe('https://claude.ai');
+
+    expect(
+      resolveResultHref(
+        {
+          platform: 'gemini',
+          title: 't',
+          dateIso: null,
+          deepLinkUrl: 'https://gemini.google.com/app/abc',
+          prefillSupported: false,
+        },
+        'gemini',
+        'x',
+      ),
+    ).toBe('https://gemini.google.com/app/abc');
+
+    expect(
+      resolveResultHref(
+        {
+          platform: 'gemini',
+          title: 't',
+          dateIso: null,
+          deepLinkUrl: null,
+          prefillSupported: false,
+        },
+        'gemini',
+        'x',
+      ),
+    ).toBe('https://gemini.google.com/app');
   });
 });

@@ -255,6 +255,16 @@ chrome.runtime.onMessage.addListener((message) => {
     if (!shouldApplyChunk(activeRequestId, message)) return;
     if (!PLATFORM_ORDER.includes(message.platform)) return;
 
+    if (
+      message.errorCode &&
+      message.status &&
+      message.status !== 'loading' &&
+      message.status !== 'ready' &&
+      message.status !== 'idle'
+    ) {
+      console.info('[cogis]', message.platform, message.status, message.errorCode);
+    }
+
     setGroupState(message.platform, message.status, {
       message: message.message,
       loginUrl: message.loginUrl,

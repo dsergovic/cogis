@@ -13,6 +13,7 @@
     CHATGPT_SEARCH: 'CHATGPT_SEARCH',
     CHATGPT_SEARCH_RESULT: 'CHATGPT_SEARCH_RESULT',
     CHATGPT_SEARCH_CANCEL: 'CHATGPT_SEARCH_CANCEL',
+    COGIS_PING: 'COGIS_PING',
   };
 
   const DEFAULT_LOGIN_BUTTON_SEL = '[data-testid="login-button"]';
@@ -148,6 +149,11 @@
 
   chrome.runtime.onMessage.addListener(function (message, _sender, sendResponse) {
     if (!message || typeof message.type !== 'string') return false;
+
+    if (message.type === MSG.COGIS_PING) {
+      sendResponse({ ok: true, platform: 'chatgpt' });
+      return false;
+    }
 
     if (message.type === MSG.CHATGPT_SEARCH_CANCEL) {
       abortRequest(message.requestId);

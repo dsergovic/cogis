@@ -1,0 +1,10 @@
+[
+  {
+    "id": "bodyleak1",
+    "title": "Secret planning notes",
+    "href": "https://gemini.google.com/app/bodyleak1",
+    "body": "secret body content must never appear",
+    "messages": [{ "content": "secret body" }],
+    "snippet": "secret snippet"
+  }
+]
