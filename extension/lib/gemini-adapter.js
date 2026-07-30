@@ -74,17 +74,28 @@ function sleep(ms, signal) {
  * “Sign in to save activity” are both present without owner signals.
  * A lone sign-in or save-activity signal without the other is ambiguous →
  * `unavailable` (not login_required).
+ * Owner / authenticated signals (S5): history items, history rail (or
+ * empty-history state), or account chip — so a proven empty rail can reach
+ * `empty` without requiring a chip.
  * @param {{
  *   signInVisible: boolean,
  *   signInToSaveVisible: boolean,
  *   hasHistoryItems: boolean,
  *   hasAccountChip: boolean,
+ *   hasHistoryRail?: boolean,
  * }} input
  * @returns {'authenticated'|'login_required'|'unavailable'}
  */
 export function classifyGeminiAuth(input) {
-  const { signInVisible, signInToSaveVisible, hasHistoryItems, hasAccountChip } = input;
-  const hasOwnerSignals = hasHistoryItems || hasAccountChip;
+  const {
+    signInVisible,
+    signInToSaveVisible,
+    hasHistoryItems,
+    hasAccountChip,
+    hasHistoryRail = false,
+  } = input;
+  // S5: history rail without sign-in upsell OR account chip (items imply rail).
+  const hasOwnerSignals = hasHistoryItems || hasAccountChip || hasHistoryRail;
 
   if (hasOwnerSignals) {
     return 'authenticated';
@@ -518,11 +529,14 @@ export async function searchGemini(input) {
     throwIfAborted(signal);
 
     const historyProbe = helpers.collectHistoryItems();
+    const hasHistoryRail =
+      typeof helpers.hasHistoryRail === 'function' ? helpers.hasHistoryRail() : false;
     const auth = classifyGeminiAuth({
       signInVisible: helpers.isSignInVisible(),
       signInToSaveVisible: helpers.isSignInToSaveVisible(),
       hasHistoryItems: historyProbe.length > 0,
       hasAccountChip: helpers.hasAccountChip(),
+      hasHistoryRail,
     });
 
     if (auth === 'login_required') {

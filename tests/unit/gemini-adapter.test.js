@@ -124,7 +124,7 @@ describe('classifyGeminiAuth (S5)', () => {
     ).toBe('unavailable');
   });
 
-  it('maps history items or account chip to authenticated', () => {
+  it('maps history items, account chip, or proven history rail to authenticated', () => {
     expect(
       classifyGeminiAuth({
         signInVisible: false,
@@ -139,6 +139,15 @@ describe('classifyGeminiAuth (S5)', () => {
         signInToSaveVisible: false,
         hasHistoryItems: false,
         hasAccountChip: true,
+      }),
+    ).toBe('authenticated');
+    expect(
+      classifyGeminiAuth({
+        signInVisible: false,
+        signInToSaveVisible: false,
+        hasHistoryItems: false,
+        hasAccountChip: false,
+        hasHistoryRail: true,
       }),
     ).toBe('authenticated');
   });
@@ -292,6 +301,27 @@ describe('gemini coverage honesty', () => {
 
     expect(outcome.status).toBe('empty');
     expect(outcome.capability).toBe('title-match');
+  });
+
+  it('returns empty when rail is proven with zero items and no account chip (S5 owner = rail)', async () => {
+    const helpers = makeHelpers({
+      items: [],
+      hasAccountChip: false,
+      hasHistoryRail: true,
+      loginOnly: true,
+    });
+
+    const outcome = await searchGemini({
+      query: 'zzzz-no-such-chat',
+      helpers,
+      platformBudgetMs: 8000,
+      sleepImpl: async () => {},
+      waitForReadyImpl: async () => true,
+    });
+
+    expect(outcome.status).toBe('empty');
+    expect(outcome.errorCode).not.toBe('auth_ambiguous');
+    expect(outcome.errorCode).not.toBe('history_rail_missing');
   });
 
   it('returns empty when rail has items but none match the title filter', async () => {
