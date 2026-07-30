@@ -12,6 +12,11 @@ export const MSG = Object.freeze({
   CLAUDE_SEARCH: 'CLAUDE_SEARCH',
   CLAUDE_SEARCH_RESULT: 'CLAUDE_SEARCH_RESULT',
   CLAUDE_SEARCH_CANCEL: 'CLAUDE_SEARCH_CANCEL',
+  GEMINI_SEARCH: 'GEMINI_SEARCH',
+  GEMINI_SEARCH_RESULT: 'GEMINI_SEARCH_RESULT',
+  GEMINI_SEARCH_CANCEL: 'GEMINI_SEARCH_CANCEL',
+  /** Lightweight reachability probe before adopting an existing lab tab (SC-7). */
+  COGIS_PING: 'COGIS_PING',
 });
 
 /** @typedef {'idle'|'loading'|'ready'|'empty'|'login_required'|'unavailable'|'timeout'} GroupStatus */
@@ -41,7 +46,7 @@ export function createSearchRequest(input) {
     query: input.query,
     platforms: Array.isArray(input.platforms)
       ? input.platforms
-      : ['chatgpt', 'perplexity', 'claude'],
+      : ['chatgpt', 'perplexity', 'claude', 'gemini'],
   };
 }
 

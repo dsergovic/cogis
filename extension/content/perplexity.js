@@ -13,6 +13,7 @@
     PERPLEXITY_SEARCH: 'PERPLEXITY_SEARCH',
     PERPLEXITY_SEARCH_RESULT: 'PERPLEXITY_SEARCH_RESULT',
     PERPLEXITY_SEARCH_CANCEL: 'PERPLEXITY_SEARCH_CANCEL',
+    COGIS_PING: 'COGIS_PING',
   };
 
   const DEFAULT_SIGN_IN_SEL =
@@ -161,6 +162,11 @@
 
   chrome.runtime.onMessage.addListener(function (message, _sender, sendResponse) {
     if (!message || typeof message.type !== 'string') return false;
+
+    if (message.type === MSG.COGIS_PING) {
+      sendResponse({ ok: true, platform: 'perplexity' });
+      return false;
+    }
 
     if (message.type === MSG.PERPLEXITY_SEARCH_CANCEL) {
       abortRequest(message.requestId);

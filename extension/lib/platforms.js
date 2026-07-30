@@ -36,10 +36,18 @@ export const PLATFORMS = {
     loginUrl: 'https://claude.ai/login',
     hostPatterns: ['https://claude.ai/*'],
   },
+  gemini: {
+    id: 'gemini',
+    label: 'Gemini',
+    capability: 'title-match',
+    origin: 'https://gemini.google.com',
+    loginUrl: 'https://gemini.google.com/app',
+    hostPatterns: ['https://gemini.google.com/*'],
+  },
 };
 
-/** UI group order for implemented platforms (M3: ChatGPT → Perplexity → Claude). */
-export const PLATFORM_ORDER = ['chatgpt', 'perplexity', 'claude'];
+/** UI group order for implemented platforms (M4: ChatGPT → Perplexity → Claude → Gemini). */
+export const PLATFORM_ORDER = ['chatgpt', 'perplexity', 'claude', 'gemini'];
 
 export const FOOTNOTE_TEXT = 'Some AIs do not support full-text search.';
 

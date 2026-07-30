@@ -9,8 +9,10 @@ import {
 } from '../lib/timeouts.js';
 import {
   pendingTerminalPlatforms,
+  pickLabTabCandidate,
   resolveWallExpiry,
   shouldCloseSearchTab,
+  shouldReloadLabTab,
 } from '../lib/orchestration.js';
 
 const tracker = createRequestTracker();
@@ -21,12 +23,14 @@ const PLATFORM_SEARCH_MSG = {
   chatgpt: MSG.CHATGPT_SEARCH,
   perplexity: MSG.PERPLEXITY_SEARCH,
   claude: MSG.CLAUDE_SEARCH,
+  gemini: MSG.GEMINI_SEARCH,
 };
 
 const PLATFORM_CANCEL_MSG = {
   chatgpt: MSG.CHATGPT_SEARCH_CANCEL,
   perplexity: MSG.PERPLEXITY_SEARCH_CANCEL,
   claude: MSG.CLAUDE_SEARCH_CANCEL,
+  gemini: MSG.GEMINI_SEARCH_CANCEL,
 };
 
 /**
@@ -52,7 +56,34 @@ function sleep(ms) {
 }
 
 /**
- * Find an existing lab tab or open one in the background.
+ * Prove the classic content script is reachable before adopting a tab (SC-7).
+ * @param {number} tabId
+ * @returns {Promise<boolean>}
+ */
+async function pingContentScript(tabId) {
+  try {
+    const res = await chrome.tabs.sendMessage(tabId, { type: MSG.COGIS_PING });
+    return Boolean(res && res.ok);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Reload a discarded/unloaded lab tab and wait for complete (SC-8).
+ * @param {number} tabId
+ * @param {number} tabCompleteMs
+ */
+async function reloadLabTab(tabId, tabCompleteMs) {
+  await chrome.tabs.reload(tabId);
+  await waitForTabComplete(tabId, tabCompleteMs);
+  // Content scripts inject at document_idle; brief settle before ping.
+  await sleep(250);
+}
+
+/**
+ * Find an existing lab tab (only after content-script reachability) or open one.
+ * Discarded / frozen tabs are reloaded, never treated as ready (SC-7/SC-8).
  * @param {string} platformId
  * @param {number} tabCompleteMs
  * @returns {Promise<{ tabId: number, created: boolean }>}
@@ -62,12 +93,25 @@ async function ensurePlatformTab(platformId, tabCompleteMs = TAB_COMPLETE_MS) {
   if (!platform) throw new Error(`Unknown platform ${platformId}`);
 
   const existing = await chrome.tabs.query({ url: platform.hostPatterns });
-  if (existing.length > 0 && existing[0].id != null) {
-    return { tabId: existing[0].id, created: false };
+  const candidate = pickLabTabCandidate(existing);
+  if (candidate?.id != null) {
+    let tabId = candidate.id;
+    if (shouldReloadLabTab(candidate)) {
+      await reloadLabTab(tabId, tabCompleteMs);
+    }
+    if (await pingContentScript(tabId)) {
+      return { tabId, created: false };
+    }
+    // Tab predates extension load or CS never matched — reload once to inject.
+    await reloadLabTab(tabId, tabCompleteMs);
+    if (await pingContentScript(tabId)) {
+      return { tabId, created: false };
+    }
   }
 
+  const homeUrl = platformId === 'gemini' ? `${platform.origin}/app` : `${platform.origin}/`;
   const tab = await chrome.tabs.create({
-    url: `${platform.origin}/`,
+    url: homeUrl,
     active: false,
   });
   if (tab.id == null) {
@@ -75,6 +119,7 @@ async function ensurePlatformTab(platformId, tabCompleteMs = TAB_COMPLETE_MS) {
   }
 
   await waitForTabComplete(tab.id, tabCompleteMs);
+  await sleep(250);
   return { tabId: tab.id, created: true };
 }
 

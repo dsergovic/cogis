@@ -1,48 +1,40 @@
 /**
- * Classic (non-module) Claude content script.
+ * Classic (non-module) Gemini content script.
  * Keeps the static content_scripts entry classic (no top-level import), then
- * dynamically imports the shared ES adapter — single owner for search/normalize/
- * pack wiring under extension/lib/.
+ * dynamically imports the shared ES adapter — single owner for DOM-first
+ * history scan / title-match under extension/lib/.
  *
  * Those modules must be listed in manifest web_accessible_resources (MV3).
  *
- * Search is endpoint-only (S2 preferred path). DOM Recents/search fallback is
- * deferred (BL-023) pending human choice; DOM is used for login-shell auth
- * signals only — consistent with M1/M2 endpoint-only precedent.
+ * Search is DOM-first per S4 (no stable first-party history search endpoint).
  */
 (function () {
   'use strict';
 
   const MSG = {
-    CLAUDE_SEARCH: 'CLAUDE_SEARCH',
-    CLAUDE_SEARCH_RESULT: 'CLAUDE_SEARCH_RESULT',
-    CLAUDE_SEARCH_CANCEL: 'CLAUDE_SEARCH_CANCEL',
+    GEMINI_SEARCH: 'GEMINI_SEARCH',
+    GEMINI_SEARCH_RESULT: 'GEMINI_SEARCH_RESULT',
+    GEMINI_SEARCH_CANCEL: 'GEMINI_SEARCH_CANCEL',
     COGIS_PING: 'COGIS_PING',
   };
 
-  const DEFAULT_LOGIN_SHELL_SEL =
-    'a[href*="/login"], button[aria-label*="Continue with Google" i], a[aria-label*="Continue with Google" i], button[aria-label*="Continue with email" i]';
-  const DEFAULT_LOGIN_URL = 'https://claude.ai/login';
+  const DEFAULT_LOGIN_URL = 'https://gemini.google.com/app';
 
   /** @type {Map<string, AbortController>} */
   const controllers = new Map();
 
   /** @type {Promise<any>|null} */
   let adapterPromise = null;
-  let loginShellSel = DEFAULT_LOGIN_SHELL_SEL;
   let loginUrl = DEFAULT_LOGIN_URL;
 
   function loadAdapter() {
     if (!adapterPromise) {
-      adapterPromise = import(chrome.runtime.getURL('lib/claude-adapter.js'))
+      adapterPromise = import(chrome.runtime.getURL('lib/gemini-adapter.js'))
         .then(function (adapterMod) {
           return import(chrome.runtime.getURL('lib/selectors/loader.js')).then(
             function (loaderMod) {
               try {
-                const pack = loaderMod.getPlatformSelectors('claude');
-                if (pack && pack.selectors && pack.selectors.loginShell) {
-                  loginShellSel = pack.selectors.loginShell;
-                }
+                const pack = loaderMod.getPlatformSelectors('gemini');
                 if (pack && pack.loginUrl) {
                   loginUrl = pack.loginUrl;
                 }
@@ -59,30 +51,6 @@
         });
     }
     return adapterPromise;
-  }
-
-  function isVisible(el) {
-    if (!el) return false;
-    try {
-      const style = window.getComputedStyle(el);
-      return style.display !== 'none' && style.visibility !== 'hidden';
-    } catch {
-      return false;
-    }
-  }
-
-  function isLoginShell() {
-    try {
-      const path = String(location.pathname || '');
-      if (path.indexOf('/login') !== -1) return true;
-      const nodes = document.querySelectorAll(loginShellSel);
-      for (let i = 0; i < nodes.length; i += 1) {
-        if (isVisible(nodes[i])) return true;
-      }
-      return false;
-    } catch {
-      return false;
-    }
   }
 
   function isAbortError(err) {
@@ -118,20 +86,17 @@
 
     try {
       const adapterMod = await loadAdapter();
-      const origin = location.origin.indexOf('http') === 0 ? location.origin : 'https://claude.ai';
-      const outcome = await adapterMod.searchClaude({
+      const outcome = await adapterMod.searchGemini({
         query: query,
-        origin: origin,
-        fetchImpl: fetch.bind(globalThis),
-        isLoginShell: isLoginShell,
+        document: document,
         signal: ac.signal,
         platformBudgetMs:
           typeof message.platformBudgetMs === 'number' ? message.platformBudgetMs : undefined,
       });
       return {
-        type: MSG.CLAUDE_SEARCH_RESULT,
+        type: MSG.GEMINI_SEARCH_RESULT,
         requestId: requestId,
-        platform: 'claude',
+        platform: 'gemini',
         capability: outcome.capability || 'title-match',
         status: outcome.status,
         results: outcome.results || [],
@@ -142,23 +107,23 @@
     } catch (err) {
       if (isAbortError(err)) {
         return {
-          type: MSG.CLAUDE_SEARCH_RESULT,
+          type: MSG.GEMINI_SEARCH_RESULT,
           requestId: requestId,
-          platform: 'claude',
+          platform: 'gemini',
           status: 'unavailable',
           results: [],
           errorCode: 'aborted',
-          message: 'Claude is temporarily unavailable.',
+          message: 'Gemini is temporarily unavailable.',
         };
       }
       return {
-        type: MSG.CLAUDE_SEARCH_RESULT,
+        type: MSG.GEMINI_SEARCH_RESULT,
         requestId: requestId,
-        platform: 'claude',
+        platform: 'gemini',
         status: 'unavailable',
         results: [],
         errorCode: isImportError(err) ? 'adapter_import_failed' : 'content_exception',
-        message: 'Claude is temporarily unavailable.',
+        message: 'Gemini is temporarily unavailable.',
       };
     } finally {
       controllers.delete(requestId);
@@ -169,17 +134,17 @@
     if (!message || typeof message.type !== 'string') return false;
 
     if (message.type === MSG.COGIS_PING) {
-      sendResponse({ ok: true, platform: 'claude' });
+      sendResponse({ ok: true, platform: 'gemini' });
       return false;
     }
 
-    if (message.type === MSG.CLAUDE_SEARCH_CANCEL) {
+    if (message.type === MSG.GEMINI_SEARCH_CANCEL) {
       abortRequest(message.requestId);
       sendResponse({ ok: true });
       return false;
     }
 
-    if (message.type !== MSG.CLAUDE_SEARCH) return false;
+    if (message.type !== MSG.GEMINI_SEARCH) return false;
 
     handleSearch(message).then(sendResponse);
     return true;

@@ -438,6 +438,83 @@ export function normalizeClaudeListResponse(payload, opts = {}) {
 }
 
 /**
+ * Build Gemini deep link from conversation id.
+ * @param {string} id
+ * @returns {string|null}
+ */
+export function geminiDeepLink(id) {
+  if (typeof id !== 'string') return null;
+  const trimmed = id.trim().replace(/^\/+/, '');
+  if (!trimmed) return null;
+  return `https://gemini.google.com/app/${encodeURIComponent(trimmed)}`;
+}
+
+/**
+ * Extract Gemini conversation id from an href or path (`/app/{id}`).
+ * @param {string|null|undefined} href
+ * @returns {string|null}
+ */
+export function extractGeminiConversationId(href) {
+  if (typeof href !== 'string' || !href.trim()) return null;
+  try {
+    const url = new URL(href, 'https://gemini.google.com');
+    const match = url.pathname.match(/\/app\/([^/?#]+)/i);
+    if (!match?.[1]) return null;
+    const id = decodeURIComponent(match[1]).trim();
+    if (!id || id.toLowerCase() === 'app') return null;
+    return id;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Normalize a Gemini history DOM item into a Cogis pointer.
+ * @param {Record<string, unknown>} raw
+ * @returns {import('./messaging.js').PointerRecord|null}
+ */
+export function normalizeGeminiHit(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+
+  const safe = stripForbiddenFields(raw);
+  const id =
+    (typeof safe.id === 'string' && safe.id) ||
+    (typeof safe.conversation_id === 'string' && safe.conversation_id) ||
+    (typeof safe.conversationId === 'string' && safe.conversationId) ||
+    extractGeminiConversationId(
+      typeof safe.href === 'string'
+        ? safe.href
+        : typeof safe.url === 'string'
+          ? safe.url
+          : typeof safe.deepLinkUrl === 'string'
+            ? safe.deepLinkUrl
+            : null,
+    );
+
+  const titleRaw = safe.title ?? safe.name ?? safe.label;
+  const title = typeof titleRaw === 'string' && titleRaw.trim() ? titleRaw.trim() : null;
+  if (!id || !title) return null;
+
+  const dateIso =
+    unixSecondsToIso(safe.update_time) ??
+    unixSecondsToIso(safe.updateTime) ??
+    (typeof safe.dateIso === 'string' && safe.dateIso.trim() ? safe.dateIso.trim() : null);
+
+  const pointer = {
+    platform: 'gemini',
+    title,
+    dateIso,
+    deepLinkUrl: geminiDeepLink(id),
+    prefillSupported: false,
+  };
+
+  if (pointerHasForbiddenFields(pointer)) {
+    return null;
+  }
+  return pointer;
+}
+
+/**
  * Deduplicate pointers by deepLinkUrl (or title fallback), preserving order.
  * @param {import('./messaging.js').PointerRecord[]} pointers
  * @param {number} [max]
@@ -472,5 +549,6 @@ export function resolveResultHref(hit, platformId, query, homeFallback = '#') {
   if (platformId === 'perplexity') return 'https://www.perplexity.ai';
   if (platformId === 'chatgpt') return 'https://chatgpt.com';
   if (platformId === 'claude') return 'https://claude.ai';
+  if (platformId === 'gemini') return 'https://gemini.google.com/app';
   return homeFallback;
 }

@@ -46,9 +46,36 @@ export function shouldWatchdogTimeout(input) {
 }
 
 /**
- * Only close ChatGPT tabs Cogis opened for search — never user-owned tabs.
+ * Only close lab tabs Cogis opened for search — never user-owned tabs.
  * @param {{ createdByUs: boolean, tabId: number|null|undefined }} input
  */
 export function shouldCloseSearchTab(input) {
   return Boolean(input.createdByUs && input.tabId != null);
+}
+
+/**
+ * Whether an existing lab tab must be reloaded before adoption (SC-8).
+ * Discarded / frozen / unloaded tabs are not ready for content-script messaging.
+ * @param {{ discarded?: boolean, status?: string|null }|null|undefined} tab
+ */
+export function shouldReloadLabTab(tab) {
+  if (!tab) return false;
+  if (tab.discarded === true) return true;
+  if (tab.status === 'unloaded') return true;
+  return false;
+}
+
+/**
+ * Prefer a non-discarded tab when adopting an existing lab session (SC-7/SC-8).
+ * @param {Array<{ id?: number|null, discarded?: boolean, status?: string|null }>} tabs
+ * @returns {{ id: number, discarded?: boolean, status?: string|null }|null}
+ */
+export function pickLabTabCandidate(tabs) {
+  if (!Array.isArray(tabs) || tabs.length === 0) return null;
+  const withId = tabs.filter((t) => t && t.id != null);
+  if (withId.length === 0) return null;
+  const ready = withId.find((t) => !shouldReloadLabTab(t));
+  return /** @type {{ id: number, discarded?: boolean, status?: string|null }} */ (
+    ready ?? withId[0]
+  );
 }
