@@ -152,6 +152,18 @@ describe('classifyGeminiAuth (S5)', () => {
     ).toBe('authenticated');
   });
 
+  it('prefers full S5 login shell over a proven rail (no false empty on logged-out)', () => {
+    expect(
+      classifyGeminiAuth({
+        signInVisible: true,
+        signInToSaveVisible: true,
+        hasHistoryItems: false,
+        hasAccountChip: false,
+        hasHistoryRail: true,
+      }),
+    ).toBe('login_required');
+  });
+
   it('maps signal-free shell to unavailable', () => {
     expect(
       classifyGeminiAuth({
@@ -322,6 +334,28 @@ describe('gemini coverage honesty', () => {
     expect(outcome.status).toBe('empty');
     expect(outcome.errorCode).not.toBe('auth_ambiguous');
     expect(outcome.errorCode).not.toBe('history_rail_missing');
+  });
+
+  it('returns login_required when full S5 shell is present even if rail heuristic fires', async () => {
+    const helpers = makeHelpers({
+      items: [],
+      signInVisible: true,
+      signInToSaveVisible: true,
+      hasAccountChip: false,
+      hasHistoryRail: true,
+      loginOnly: true,
+    });
+
+    const outcome = await searchGemini({
+      query: 'x',
+      helpers,
+      sleepImpl: async () => {},
+      waitForReadyImpl: async () => true,
+    });
+
+    expect(outcome.status).toBe('login_required');
+    expect(outcome.errorCode).toBe('login_shell');
+    expect(outcome.status).not.toBe('empty');
   });
 
   it('returns empty when rail has items but none match the title filter', async () => {

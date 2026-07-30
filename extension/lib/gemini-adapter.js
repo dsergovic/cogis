@@ -74,9 +74,11 @@ function sleep(ms, signal) {
  * “Sign in to save activity” are both present without owner signals.
  * A lone sign-in or save-activity signal without the other is ambiguous →
  * `unavailable` (not login_required).
- * Owner / authenticated signals (S5): history items, history rail (or
- * empty-history state), or account chip — so a proven empty rail can reach
- * `empty` without requiring a chip.
+ *
+ * Owner / authenticated signals (S5): history items, account chip, or a
+ * proven history rail **without** the full sign-in upsell. Ordering matters:
+ * items/chip authenticate immediately; the full login shell beats a bare
+ * rail (empty-history text on a logged-out page must not become `empty`).
  * @param {{
  *   signInVisible: boolean,
  *   signInToSaveVisible: boolean,
@@ -94,19 +96,22 @@ export function classifyGeminiAuth(input) {
     hasAccountChip,
     hasHistoryRail = false,
   } = input;
-  // S5: history rail without sign-in upsell OR account chip (items imply rail).
-  const hasOwnerSignals = hasHistoryItems || hasAccountChip || hasHistoryRail;
 
-  if (hasOwnerSignals) {
+  // Strong owner signals: real history items or account chip.
+  if (hasHistoryItems || hasAccountChip) {
     return 'authenticated';
   }
 
-  // S5 combination: both login upsell signals, no owner signals.
+  // Full S5 login shell wins over a rail-only / empty-history heuristic.
   if (signInVisible && signInToSaveVisible) {
     return 'login_required';
   }
 
-  // Ambiguous: zero owner signals, and not the full login shell.
+  // Proven rail without sign-in upsell (S5: history rail OR account chip).
+  if (hasHistoryRail) {
+    return 'authenticated';
+  }
+
   return 'unavailable';
 }
 
