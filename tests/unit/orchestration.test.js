@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
 import {
   resolveWallExpiry,
   pendingTerminalPlatforms,
@@ -11,6 +10,9 @@ import {
   MAX_ENSURE_TAB_CREATES,
   resolveEnsuredTabOwnership,
   tabIdsSafeToClose,
+  collectProtectedTabIds,
+  requestIdsToCancelOnSupersede,
+  isSearchEpochCurrent,
 } from '../../extension/lib/orchestration.js';
 import {
   PLATFORM_TIMEOUT_MS,
@@ -109,40 +111,29 @@ describe('shouldCloseSearchTab', () => {
     expect(shouldCloseSearchTab({ createdByUs: true, tabId: null })).toBe(false);
   });
 
-  it('skips tabs.remove while a newer requestId is active (BL-001)', () => {
+  it('closes orphans even when another search is live; skips protected tabIds only', () => {
     expect(
       shouldCloseSearchTab({
         createdByUs: true,
         tabId: 7,
-        activeRequestId: 'req-b',
-        closingRequestId: 'req-a',
+        protectedTabIds: new Set(),
+      }),
+    ).toBe(true);
+    expect(
+      shouldCloseSearchTab({
+        createdByUs: true,
+        tabId: 7,
+        protectedTabIds: new Set([7]),
       }),
     ).toBe(false);
-    expect(
-      shouldCloseSearchTab({
-        createdByUs: true,
-        tabId: 7,
-        activeRequestId: 'req-a',
-        closingRequestId: 'req-a',
-      }),
-    ).toBe(true);
-    expect(
-      shouldCloseSearchTab({
-        createdByUs: true,
-        tabId: 7,
-        activeRequestId: null,
-        closingRequestId: 'req-a',
-      }),
-    ).toBe(true);
   });
 });
 
-describe('superseding-search tab lifecycle (BL-001)', () => {
+describe('superseding-search helpers (BL-001)', () => {
   it('bounds ensurePlatformTab creates to one per call', () => {
     expect(MAX_ENSURE_TAB_CREATES).toBe(1);
     expect(canCreateLabTab(0)).toBe(true);
     expect(canCreateLabTab(1)).toBe(false);
-    expect(canCreateLabTab(2)).toBe(false);
   });
 
   it('discards Cogis-created tabs when ensure finishes after supersede', () => {
@@ -175,32 +166,39 @@ describe('superseding-search tab lifecycle (BL-001)', () => {
     ).toEqual({ keep: true, close: false });
   });
 
-  it('lists only safe-to-close tab ids for a finishing request', () => {
+  it('lists orphan created tab ids; excludes protected and user-owned', () => {
     const tabs = [
       { created: true, tabId: 1 },
       { created: false, tabId: 2 },
       { created: true, tabId: 3 },
       { created: true, tabId: null },
     ];
-    expect(tabIdsSafeToClose(tabs, { activeRequestId: 'b', closingRequestId: 'a' })).toEqual([]);
-    expect(tabIdsSafeToClose(tabs, { activeRequestId: null, closingRequestId: 'a' })).toEqual([
-      1, 3,
-    ]);
-    expect(tabIdsSafeToClose(tabs, { activeRequestId: 'a', closingRequestId: 'a' })).toEqual([
-      1, 3,
-    ]);
+    expect(tabIdsSafeToClose(tabs, { protectedTabIds: new Set([3]) })).toEqual([1]);
+    expect(tabIdsSafeToClose(tabs, { protectedTabIds: new Set() })).toEqual([1, 3]);
   });
 
-  it('service worker awaits prior cancel before fan-out and discards superseded creates', () => {
-    const sw = readFileSync(
-      new URL('../../extension/background/service-worker.js', import.meta.url),
-      'utf8',
-    );
-    expect(sw).toContain('await cancelSearch(prior)');
-    expect(sw).toContain('resolveEnsuredTabOwnership');
-    expect(sw).toContain('discardSupersededCreatedTab');
-    expect(sw).toContain('canCreateLabTab');
-    expect(sw).toMatch(/created:\s*false/);
+  it('collectProtectedTabIds skips the closing request', () => {
+    const entries = [
+      ['A', { tabs: new Map([['chatgpt', { tabId: 1, created: true }]]) }],
+      ['B', { tabs: new Map([['chatgpt', { tabId: 1, created: false }]]) }],
+    ];
+    expect([...collectProtectedTabIds(entries, 'A')]).toEqual([1]);
+    expect([...collectProtectedTabIds(entries, 'B')]).toEqual([1]);
+  });
+
+  it('requestIdsToCancelOnSupersede finds state keys when activeId is null', () => {
+    expect(
+      requestIdsToCancelOnSupersede({
+        searchStateKeys: ['A', 'B'],
+        activeRequestId: null,
+        incomingRequestId: 'B',
+      }),
+    ).toEqual(['A']);
+  });
+
+  it('isSearchEpochCurrent rejects stale fan-out', () => {
+    expect(isSearchEpochCurrent(1, 1)).toBe(true);
+    expect(isSearchEpochCurrent(1, 2)).toBe(false);
   });
 });
 

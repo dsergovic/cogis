@@ -25,7 +25,7 @@ Add new rows at the top of the relevant section. Prefer one line + link to PR/is
 
 | ID | Status | Item | Notes |
 | --- | --- | --- | --- |
-| BL-001 | done | **Tab close on cancel race** | Fixed on `feature/hotfix-smoke-tabs-collapse`: await prior cancel before fan-out; skip `tabs.remove` while a newer `requestId` is active; discard Cogis-created tabs when ensure finishes after supersede; never close `created:false`; bound `ensurePlatformTab` to one create. |
+| BL-001 | open | **Tab close on cancel race** | Pass-1 on PR #16 rejected the first fix (await-via-activeId unreachable after popup CANCEL; skip-all-close → permanent litter). Pass-2 in flight: cancel-by-`searchState` + epoch freshness + close orphans not in newer `state.tabs`. Keep open until verify-only + operator smoke. |
 | BL-002 | open | **SW / popup orchestration tests** | Unit suite covers pure helpers + WAR graph; little/no direct `chrome.runtime` / `chrome.tabs` / popup watchdog coverage. Gap that hid timeout and tab races in review. Add mocked-chrome tests when touching SW next. |
 | BL-003 | open | **Live redacted fixtures** | M1 shipped stub fixtures. After successful local smokes, optionally replace with redacted live session/search shapes and pin confirmed `query` vs `q` in `local-pack` if not already locked in code. |
 | BL-004 | open | **Icons** | Placeholder icons OK for dev-unpacked; replace before any store/public packaging. |
