@@ -1,12 +1,12 @@
 # Cogis — Hand-Off Prompts (Phase 2)
 
-**This file is the official source of truth for all Cogis hand-off prompts — implementer and reviewer, M1 through M6.**
+**This file is the official source of truth for all Cogis hand-off prompts — implementer and reviewer, M1 through M7.**
 
 Do not keep parallel copies of these prompts in chat memory, session notes, or a scratch doc. If a prompt needs to change, change it **here** and reference it. If a chat contains a prompt that disagrees with this file, this file wins.
 
 Framework: [Full-Lifecycle Agentic Software Engineering v1.1.0](https://github.com/dsergovic/research/blob/main/docs/Full-Lifecycle%20Agentic%20Software%20Engineering.md)  
 Blueprint: `docs/agent_blueprint.md`  
-Spikes: `docs/spikes/` (S1–S6 resolved 2026-07-28)  
+Spikes: `docs/spikes/` (S1–S6 resolved 2026-07-28; **S7 Grok open** — stub only, live fill-in required)  
 Backlog: `docs/backlog.md`
 
 ## How this file is used: attach once, paste one paragraph
@@ -26,9 +26,9 @@ Two rules survive from the older operator-only posture:
 | --- | --- | --- |
 | 1 | Hand-off checklist | Operator |
 | 2 | Definition of Done before opening the PR | Implementer, from the attached file |
-| 3 | Self-check tables (3.1 platform M1–M4; 3.2 data/UI M5–M6) | Implementer copies the applicable table into the PR body |
+| 3 | Self-check tables (3.1 platform M1–M4 **and M7**; 3.2 data/UI M5–M6) | Implementer copies the applicable table into the PR body |
 | 4 | Known traps (permanent) | Implementer, from the attached file |
-| 5 | **Implementer hand-offs (Cursor)** — template + short paste blocks M1–M6 | Operator pastes one block |
+| 5 | **Implementer hand-offs (Cursor)** — template + short paste blocks M1–M7 | Operator pastes one block |
 | 6 | **Dual-review hand-offs (Perplexity Computer)** — policy + short paste blocks | Operator pastes one block; reviewers read §6.1–§6.2 from the repo |
 | 7 | Local prerequisites | Operator |
 | 8 | Operator smoke (Phase 4 quick list) | Operator |
@@ -38,7 +38,7 @@ Two rules survive from the older operator-only posture:
 ## 1. Hand-off checklist (once per milestone)
 
 1. `git checkout dev && git pull` — cut the milestone branch from current **`dev`** (integration / day-to-day working area; not `main`).
-2. Confirm the spike finding for this milestone is merged and you accept it (S1→M1, S3→M2, S2→M3, S4→M4; S5/S6 are cross-cutting and already folded in).
+2. Confirm the spike finding for this milestone is merged and you accept it (S1→M1, S3→M2, S2→M3, S4→M4, S7→M7; S5/S6 are cross-cutting and already folded in). **S7 is the exception:** it ships as an open stub, so either you fill it in first (Human/Computer) or the M7 prompt makes writing it the agent's first task.
 3. Open the repo in Cursor and start a **fresh agent chat** (never reuse a prior milestone's chat).
 4. Attach context — **this is the step that replaces copy-paste**: `@docs/agent_blueprint.md` **and `@docs/handoff-prompts.md`** (so §2, §3, and §4 are readable in-chat without you pasting them).  
    For platform milestones also attach:
@@ -46,6 +46,7 @@ Two rules survive from the older operator-only posture:
    - M2: `@docs/spikes/s3-perplexity-thread-contract.md` + S5/S6
    - M3: `@docs/spikes/s2-claude-recents-contract.md` + S5/S6
    - M4: `@docs/spikes/s4-gemini-history-contract.md` + S5/S6
+   - M7: `@docs/spikes/s7-grok-history-contract.md` + S5/S6 — attach the file even while it is an open stub; the §5.7 prompt tells the agent to author the finding from live investigation as task 1 if it is still `TBD`.
    - M5/M6: no spikes — the two attachments above are the whole set (plus M5 notes in blueprint §10).
 5. Enable terminal auto-run for `npm`, `node`, `git` as you prefer; deny force-push and merge to `dev` or `main`.
 6. Paste **only** the short §5.x block for this one milestone. Do **not** paste §2, §3, or §4 by hand — the block tells the agent to read them from the attached file. Step away.
@@ -78,7 +79,7 @@ All three pass locally on the branch head that gets pushed. `docs/` and `AGENTS.
 
 ### 2.3 PR body: Self-check table
 
-Complete the self-check table from §3 in the PR body — **§3.1 for platform milestones (M1–M4)**, **§3.2 (shorter) for M5–M6**. Every row gets a concrete evidence pointer (test name, `file:line`, or "operator smoke — pending"), not a bare checkmark. Rows that cannot be proven yet are marked **unverified** with a backlog ID; they are not marked done.
+Complete the self-check table from §3 in the PR body — **§3.1 for platform milestones (M1–M4 and M7)**, **§3.2 (shorter) for M5–M6**. Every row gets a concrete evidence pointer (test name, `file:line`, or "operator smoke — pending"), not a bare checkmark. Rows that cannot be proven yet are marked **unverified** with a backlog ID; they are not marked done.
 
 ### 2.4 Honesty rules (non-negotiable)
 
@@ -86,9 +87,11 @@ Complete the self-check table from §3 in the PR body — **§3.1 for platform m
 - **Soft reach ceilings are not truncation.** A documented page/scan ceiling that reports `empty` by design (unread older history is a platform limit) must be described **separately** from failure truncation, which must never report `empty`. Conflating the two in either direction is a blocker: it either hides real failures or turns a known limit into a fake error.
 - **Test-plan checkboxes are claims.** Leave unchecked what you did not run; never pre-tick operator smoke.
 
-### 2.5 Where M5/M6 differ
+### 2.5 Where M5/M6 differ — and where M7 does not
 
 M5 (data-only selector pack) and M6 (debug panel + optional ping) have no lab fan-out, no auth mapping, and no container-coverage problem. They use the shorter §3.2 table. §2.1, §2.2, and §2.4 still apply in full — for M5/M6 the honesty rules bite on *fail-closed* and *default-off* claims instead of on `empty`.
+
+**M7 (Grok) is not one of these.** It adds a fifth lab, so it is a **platform** milestone exactly like M1–M4: full lab fan-out, auth mapping, container coverage, and the `empty`-honesty rules in their original form. M7 uses the **§3.1** table, not §3.2, and the §4 traps apply to it in full.
 
 ---
 
@@ -96,7 +99,7 @@ M5 (data-only selector pack) and M6 (debug panel + optional ping) have no lab fa
 
 **The implementer copies the applicable table out of this file into the PR body and fills the evidence column.** The operator does not paste these tables into the chat — the agent has the file attached and reads it here.
 
-### 3.1 Platform milestones (M1–M4)
+### 3.1 Platform milestones (M1–M4, M7)
 
 | # | Check | Evidence |
 | --- | --- | --- |
@@ -130,7 +133,7 @@ M5 (data-only selector pack) and M6 (debug panel + optional ping) have no lab fa
 
 ## 4. Known traps
 
-Permanent list, distilled from shipped-milestone review scars. These apply to **every platform milestone (M1–M4)** and to any later fix branch that touches a lab adapter. Read them before writing the adapter, not after review flags them.
+Permanent list, distilled from shipped-milestone review scars. These apply to **every platform milestone (M1–M4, and M7 as a platform milestone)** and to any later fix branch that touches a lab adapter. Read them before writing the adapter, not after review flags them.
 
 - **Cap after the client-side title filter, not before.** Normalize the whole page, filter by title, *then* cap. Capping the raw page first throws away matches sitting further down it.
 - **Partial results are success.** If any authenticated page or container came back with hits, return them. Reporting `unavailable` because one later page failed loses results the user can see with their own eyes.
@@ -157,7 +160,7 @@ Nothing else. If you find yourself scrolling up to copy a table, stop: the agent
 
 ### 5.0 Template (any milestone)
 
-> Read `docs/agent_blueprint.md`, any spike files attached in this chat, and — in the attached `docs/handoff-prompts.md` — **§2 (Definition of Done)**, **§3 (self-check table: use §3.1 for M1–M4, §3.2 for M5–M6)**, and **§4 (Known traps)**. Do not ask me to paste those sections; read them from the file. Implement **Milestone \<N\> only** — ignore the other milestones' prompts in §5 of that file. Operate under the Mandatory Autonomy Guardrails and Implementer Independence tiers in the blueprint (framework §3 / §3.5): work exclusively on branch `feature/agent-m\<N\>-\<slug\>` cut from `dev`; respect the 5-attempt stop-loss and 25-attempt milestone budget; implement against the pre-approved **behavioral** acceptance criteria for this milestone. Codified tests may be authored as task 1 and implemented in the same milestone once written to match behavioral AC and spike contracts — but you must never weaken behavioral AC. Escalate anything on the blueprint escalation list instead of deciding it yourself. Note Tier 2 decisions under a **Choices made** heading in the PR description. Do not ask me for permission on individual file edits. Initialize directories and files as needed, run npm test/lint/format, fix errors automatically, verify green.
+> Read `docs/agent_blueprint.md`, any spike files attached in this chat, and — in the attached `docs/handoff-prompts.md` — **§2 (Definition of Done)**, **§3 (self-check table: use §3.1 for platform milestones — M1–M4 and M7 — and §3.2 for M5–M6)**, and **§4 (Known traps)**. Do not ask me to paste those sections; read them from the file. Implement **Milestone \<N\> only** — ignore the other milestones' prompts in §5 of that file. Operate under the Mandatory Autonomy Guardrails and Implementer Independence tiers in the blueprint (framework §3 / §3.5): work exclusively on branch `feature/agent-m\<N\>-\<slug\>` cut from `dev`; respect the 5-attempt stop-loss and 25-attempt milestone budget; implement against the pre-approved **behavioral** acceptance criteria for this milestone. Codified tests may be authored as task 1 and implemented in the same milestone once written to match behavioral AC and spike contracts — but you must never weaken behavioral AC. Escalate anything on the blueprint escalation list instead of deciding it yourself. Note Tier 2 decisions under a **Choices made** heading in the PR description. Do not ask me for permission on individual file edits. Initialize directories and files as needed, run npm test/lint/format, fix errors automatically, verify green.
 >
 > Before opening the PR you must satisfy **§2** in full and have worked **§4** as a checklist. Copy the applicable **§3** table into the PR body yourself and fill every evidence cell — that table is your job to transcribe, not mine. The PR body carries Choices made (including how you handled every residual risk from the attached spikes) plus the filled self-check table with real evidence pointers. Do not claim anything you have not tested. Open a PR to `dev` when done. **Do not merge.** I am stepping away from the laptop.
 
@@ -197,7 +200,27 @@ Nothing else. If you find yourself scrolling up to copy a table, stop: the agent
 >
 > Satisfy **§2** and copy the shorter **§3.2 data/UI self-check table** into the PR body with filled evidence cells. Prove default-off with a test asserting zero network calls, and confirm M1–M5 behavior is unchanged with the panel closed. Open PR to `dev`; **do not merge.**
 
-### 5.7 Optional: live selector polish (human + short Cursor assist)
+### 5.7 M7 — Grok
+
+Grok is the **fifth** platform and the first one added after the V1 four. It only exists as a milestone because `docs/agent_blueprint.md` now carries a human-approved **M7 — Grok** section; escalation-list item #10 (adding a platform) is satisfied by that section and by nothing else. If the blueprint section is missing from the attached file, stop and escalate instead of pasting this block.
+
+The S7 spike ships as an **open stub**, so this block does double duty: it authorizes the agent to author the finding from live investigation before implementing against it.
+
+> Read `docs/agent_blueprint.md` — specifically the **M7 — Grok** section and its behavioral acceptance criteria — plus `docs/spikes/s7-grok-history-contract.md`, `docs/spikes/s5-auth-state-detection.md`, `docs/spikes/s6-long-history-reach.md`, and **§2, §3.1, and §4 of the attached `docs/handoff-prompts.md`**. Do not ask me to paste those sections; read them from the files. Implement **Milestone 7 only** — Grok (xAI) as the fifth platform. Ignore the other milestones in §5 of that file. Branch `feature/agent-m7-grok` cut from `dev`.
+>
+> **Task 1 — the spike, if it is still open.** `docs/spikes/s7-grok-history-contract.md` is a stub with `TBD` fields. If it has not been filled in, your **first task** is to write a short spike finding from **live investigation** in the same shape as `s4-gemini-history-contract.md`, covering: the actual history surface (is there a searchable history list, and where), auth signals for logged-in / logged-out / failure per the S5 predicate style, whether capability is honestly **title-match** or provably **full-text**, the deep-link URL pattern, and which host origins are real. Commit that finding, then implement against it. **Never invent an endpoint, a selector, or a URL pattern you did not observe** — an unobserved field stays `TBD` and the behavior falls back to the honest default. Product decisions that land on the blueprint escalation list are still escalations, not spike outcomes you may decide yourself.
+>
+> **Implementation — mirror the M1–M4 contracts, do not invent a new shape.** A fifth platform touches the same places the first four did: a `platforms.js` entry (id `grok`, label, capability, origin, loginUrl, hostPatterns), `PLATFORM_ORDER`, a platform block in `lib/selectors/local-pack.json`, `content/grok.js`, `lib/grok-adapter.js`, a `web_accessible_resources` entry matching the Grok origins, **narrow** `host_permissions` (only origins S7 proved — widening toward `<all_urls>` or unrelated origins is escalation #8), the popup result card/group, a debug-panel stats row if the M6 panel needs one, and unit tests plus redacted fixtures.
+>
+> **Strategy.** Prefer a session-cookie first-party endpoint **only if you proved it live**; otherwise go DOM-first with a client-side **title-match** filter and label it title-match. Claiming full-text without proof is an overclaim under §2.4. **Deep links only when the pattern is proven** — otherwise the click cascade falls back to the origin home/app surface, and `deepLinkUrl` stays `null`. No fake deep links.
+>
+> **Keep M1–M6 green.** The fan-out becomes **five platforms** and must still respect the 8s per-platform / 15s wall budgets and cancel semantics — a fifth group must not push the wall or let a superseded `requestId` leak into a newer request.
+>
+> Work the **§4 Known traps** list as an explicit checklist; on a DOM-first platform the ones that bite are false `empty` (an unproven or unreached history surface is `unavailable`/`timeout`, never `empty`), auth mapping per S5 (`403` without a login shell is `unavailable`, not logged-out), tab-adoption readiness (never adopt an existing Grok tab without proving content-script reachability, and handle a discarded tab), and cancel isolation across all five platforms.
+>
+> Satisfy **§2** in full and copy the **§3.1 platform self-check table** into the PR body yourself with every evidence cell filled — real test names or `file:line`, `unverified` + a `BL-0xx` row where you could not prove it. The PR body carries **Choices made** (including every residual risk from S7/S5/S6) plus that table. Open a PR to `dev`. **Do not merge.** I am stepping away.
+
+### 5.8 Optional: live selector polish (human + short Cursor assist)
 
 If a platform milestone fails on live DOM/header drift, do **not** reopen product spikes. Run a short fix branch:
 
@@ -288,6 +311,7 @@ Reviewers never merge and never approve. After pass 2 is clean, the operator run
 | M1–M4 | Logged-in browser sessions for the platform under test; Load unpacked `extension/` |
 | M5 | Optional local static host or mocked fetch for manifest tests |
 | M6 | Same as M1–M4 |
+| M7 | Same as M1–M4 — a **logged-in Grok session** in the same browser profile (the S7 spike cannot be filled in, and M7 cannot be smoked, from a logged-out account) |
 
 ---
 
@@ -302,12 +326,15 @@ Reviewers never merge and never approve. After pass 2 is clean, the operator run
 - Container scope for this milestone's platform (Projects / Spaces) — findable, or the limitation is written down
 - Console `errorCode` legible on every non-hit state
 
+**Once M7 lands the fan-out is five platforms, not four.** Re-run US-7 (cancel) and the timeout checks with all five groups live: the added group must not push the 15s wall, and a superseded `requestId` must stay dropped across every group including Grok.
+
 ---
 
 ## Changelog
 
 | Date | Change |
 | --- | --- |
+| 2026-07-30 | **M7 Grok hand-off.** Propagated M7 through the file: source-of-truth line and §5 now read M1–M7; §3.1 is the platform table for M1–M4 **and M7**; §2.5 states M7 is a platform milestone (not a data/UI one); §4 traps apply to it; §1 lists the S7 attachment; §7 adds the logged-in-Grok prerequisite; §8 notes five-platform fan-out. Added **§5.7 M7 — Grok** (previous "live selector polish" renumbered to **§5.8**), which authorizes authoring the open S7 spike as task 1 from live investigation. Companion: blueprint gains an **M7 — Grok** section, without which escalation #10 still blocks the platform add. |
 | 2026-07-30 | Switched the hand-off from copy-paste to attach-once. This file is now **attached in Cursor** instead of withheld; the operator pastes only the short §5.x block, and each §5.x prompt tells the agent to read §2/§3/§4 from the attached file and transcribe the §3 table into the PR body itself. §6 review prompts reference §6.1/§6.2 in the repo instead of inlining them. |
 | 2026-07-30 | Renamed from `cursor-handoff-prompts.md`; declared the official source of truth for all hand-off prompts. Split implementer (Cursor) and dual-review (Perplexity Computer) audiences. Added §2 Definition of Done, §3 self-check tables, §4 Known traps, and §6 review loop policy from M3 review lessons. |
 | 2026-07-28 | Initial operator hand-off prompts alongside blueprint 0.2.0. |
