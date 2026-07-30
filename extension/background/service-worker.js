@@ -15,6 +15,9 @@ import {
   shouldReloadLabTab,
 } from '../lib/orchestration.js';
 import { getSelectorPackStatus, refreshSelectorPack } from '../lib/selectors/loader.js';
+import { getDebugStatsSnapshot, getPlatformStat, recordPlatformStat } from '../lib/debug-stats.js';
+import { loadDebugPrefs, savePingOptIn } from '../lib/debug-prefs.js';
+import { buildPingPayload, maybeSendAnonymousPing, PING_ENDPOINT_URL } from '../lib/ping.js';
 
 const tracker = createRequestTracker();
 
@@ -276,6 +279,85 @@ function emitIfActive(msg, requestId) {
 }
 
 /**
+ * @param {{
+ *   platformId: string,
+ *   latencyMs: number,
+ *   hitCount: number,
+ *   status: string,
+ *   errorCode?: string,
+ * }} input
+ */
+function notePlatformTerminal(input) {
+  recordPlatformStat({
+    platformId: input.platformId,
+    latencyMs: input.latencyMs,
+    hitCount: input.hitCount,
+    status: input.status,
+    errorCode: input.errorCode ?? null,
+  });
+}
+
+/**
+ * Extension version from the installed manifest (optional ping field).
+ * @returns {string|undefined}
+ */
+function extensionVersion() {
+  try {
+    return chrome.runtime.getManifest()?.version;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Build the debug panel snapshot (stats + pack + prefs). No query text.
+ */
+async function buildDebugSnapshot() {
+  const prefs = await loadDebugPrefs();
+  const pack = getSelectorPackStatus();
+  return {
+    ok: true,
+    prefs,
+    pingEndpointConfigured: Boolean(PING_ENDPOINT_URL),
+    selectorPack: {
+      localVersion: pack.localVersion,
+      activeVersion: pack.activeVersion,
+      source: pack.source,
+      lastRefreshOk: pack.lastRefreshOk,
+      lastErrorCode: pack.lastErrorCode,
+    },
+    ...getDebugStatsSnapshot(),
+    extensionVersion: extensionVersion() ?? null,
+  };
+}
+
+/**
+ * Opt-in anonymous ping for one platform's last error class. Default-off / no URL ⇒ no network.
+ * @param {string} platformId
+ */
+async function sendDebugPing(platformId) {
+  const prefs = await loadDebugPrefs();
+  const stat = getPlatformStat(platformId);
+  const errorClass = stat.errorCode || stat.status;
+  if (!errorClass) {
+    return { ok: false, sent: false, reason: 'no_error_class' };
+  }
+  const pack = getSelectorPackStatus();
+  const payload = buildPingPayload({
+    platformId,
+    selectorPackVersion: pack.activeVersion || pack.localVersion || 'unknown',
+    errorClass,
+    extensionVersion: extensionVersion(),
+  });
+  const result = await maybeSendAnonymousPing({
+    optIn: prefs.pingOptIn,
+    endpointUrl: PING_ENDPOINT_URL,
+    payload,
+  });
+  return { ok: true, ...result, payload };
+}
+
+/**
  * @param {string} wallRequestId
  */
 async function onWallExpiry(wallRequestId) {
@@ -293,6 +375,13 @@ async function onWallExpiry(wallRequestId) {
   if (decision.kind === 'superseded') return;
 
   for (const platformId of decision.platforms) {
+    notePlatformTerminal({
+      platformId,
+      latencyMs: OVERALL_WALL_MS,
+      hitCount: 0,
+      status: 'timeout',
+      errorCode: 'wall_timeout',
+    });
     emit(
       createResultChunk({
         requestId: wallRequestId,
@@ -351,9 +440,9 @@ async function runPlatform(requestId, query, platformId, state) {
   );
 
   let terminalStatus = 'unavailable';
+  const platformStarted = Date.now();
 
   try {
-    const platformStarted = Date.now();
     const result = await withTimeout(
       (async () => {
         const ensured = await ensurePlatformTab(platformId, TAB_COMPLETE_MS);
@@ -382,13 +471,21 @@ async function runPlatform(requestId, query, platformId, state) {
     if (!tracker.isActive(requestId)) return;
 
     terminalStatus = result?.status ?? 'unavailable';
+    const results = result?.results ?? [];
+    notePlatformTerminal({
+      platformId,
+      latencyMs: Date.now() - platformStarted,
+      hitCount: Array.isArray(results) ? results.length : 0,
+      status: terminalStatus,
+      errorCode: result?.errorCode,
+    });
     emitIfActive(
       createResultChunk({
         requestId,
         platform: platformId,
         status: terminalStatus,
         capability: result?.capability ?? PLATFORMS[platformId]?.capability,
-        results: result?.results ?? [],
+        results,
         errorCode: result?.errorCode,
         message: result?.message,
         loginUrl: result?.loginUrl ?? PLATFORMS[platformId]?.loginUrl,
@@ -405,6 +502,14 @@ async function runPlatform(requestId, query, platformId, state) {
       await abortContentSearch(requestId, platformId, tab?.tabId ?? null);
     }
     terminalStatus = isTimeout ? 'timeout' : 'unavailable';
+    const errorCode = isTimeout ? 'timeout' : 'adapter_error';
+    notePlatformTerminal({
+      platformId,
+      latencyMs: Date.now() - platformStarted,
+      hitCount: 0,
+      status: terminalStatus,
+      errorCode,
+    });
     emitIfActive(
       createResultChunk({
         requestId,
@@ -412,7 +517,7 @@ async function runPlatform(requestId, query, platformId, state) {
         status: terminalStatus,
         capability: PLATFORMS[platformId]?.capability,
         results: [],
-        errorCode: isTimeout ? 'timeout' : 'adapter_error',
+        errorCode,
         message: unavailableCopy(platformId),
         loginUrl: PLATFORMS[platformId]?.loginUrl,
       }),
@@ -471,6 +576,25 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message.type === MSG.SEARCH_CANCEL) {
     void cancelSearch(message.requestId).then(() => sendResponse({ ok: true }));
+    return true;
+  }
+
+  if (message.type === MSG.DEBUG_GET_SNAPSHOT) {
+    void buildDebugSnapshot().then(sendResponse);
+    return true;
+  }
+
+  if (message.type === MSG.DEBUG_SET_PING_OPT_IN) {
+    void savePingOptIn(message.pingOptIn === true)
+      .then((prefs) => sendResponse({ ok: true, prefs }))
+      .catch((err) => sendResponse({ ok: false, error: String(err?.message ?? err) }));
+    return true;
+  }
+
+  if (message.type === MSG.DEBUG_SEND_PING) {
+    void sendDebugPing(message.platformId)
+      .then(sendResponse)
+      .catch((err) => sendResponse({ ok: false, sent: false, error: String(err?.message ?? err) }));
     return true;
   }
 

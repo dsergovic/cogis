@@ -5,6 +5,8 @@ import {
   createSearchCancel,
   createResultChunk,
   createPlatformDone,
+  createDebugSetPingOptIn,
+  createDebugSendPing,
   shouldApplyChunk,
   normalizeQuery,
 } from '../../extension/lib/messaging.js';
@@ -49,6 +51,26 @@ describe('message factories', () => {
     expect(createPlatformDone({ requestId: 'r1', platform: 'chatgpt', status: 'ready' }).type).toBe(
       MSG.SEARCH_PLATFORM_DONE,
     );
+  });
+});
+
+describe('debug message factories (M6)', () => {
+  it('builds DEBUG_SET_PING_OPT_IN coerced to boolean', () => {
+    expect(createDebugSetPingOptIn({ pingOptIn: true })).toEqual({
+      type: MSG.DEBUG_SET_PING_OPT_IN,
+      pingOptIn: true,
+    });
+    expect(createDebugSetPingOptIn({ pingOptIn: 1 })).toEqual({
+      type: MSG.DEBUG_SET_PING_OPT_IN,
+      pingOptIn: false,
+    });
+  });
+
+  it('builds DEBUG_SEND_PING', () => {
+    expect(createDebugSendPing({ platformId: 'chatgpt' })).toEqual({
+      type: MSG.DEBUG_SEND_PING,
+      platformId: 'chatgpt',
+    });
   });
 });
 
