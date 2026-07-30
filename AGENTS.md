@@ -35,3 +35,7 @@ Runs on PRs and pushes to `dev` / `main`: `npm ci` → lint → format:check →
 ### Integration branch
 
 Feature work targets **`dev`**. Do not merge to `dev`/`main` without operator approval.
+
+### Operator-only docs
+
+`docs/handoff-prompts.md` is the operator's source of truth for milestone hand-off and dual-review prompts. It is **human-only** — do not read it as agent context or act on it directly; the operator pastes the relevant prompt into the chat. Same rule as `docs/backlog.md`.
