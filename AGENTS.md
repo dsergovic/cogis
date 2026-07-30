@@ -36,6 +36,10 @@ Runs on PRs and pushes to `dev` / `main`: `npm ci` → lint → format:check →
 
 Feature work targets **`dev`**. Do not merge to `dev`/`main` without operator approval.
 
-### Operator-only docs
+### Hand-off doc
 
-`docs/handoff-prompts.md` is the operator's source of truth for milestone hand-off and dual-review prompts. It is **human-only** — do not read it as agent context or act on it directly; the operator pastes the relevant prompt into the chat. Same rule as `docs/backlog.md`.
+`docs/handoff-prompts.md` is the source of truth for milestone hand-off and dual-review prompts. It is **attached as agent context**, and you are expected to read **§2** (Definition of Done), **§3** (self-check tables — copy the applicable one into your PR body and fill the evidence column), and **§4** (Known traps).
+
+Two limits: implement **only the milestone named in the prompt the operator pasted** — §5 lists every milestone's prompt, and reading ahead is not authorization to start one. §1, §7, and §8 are operator steps, not yours.
+
+`docs/backlog.md` stays reference-only: cite `BL-0xx` IDs, do not work the backlog on your own initiative.

@@ -4,24 +4,32 @@
 
 Do not keep parallel copies of these prompts in chat memory, session notes, or a scratch doc. If a prompt needs to change, change it **here** and reference it. If a chat contains a prompt that disagrees with this file, this file wins.
 
-**Audience: human operator only.**  
-**Do not attach this file in Cursor.** A Cursor implementer gets `docs/agent_blueprint.md` plus the relevant `docs/spikes/*.md` findings — nothing else from this file. The pasted prompt is the only channel through which this file reaches an agent.
-
 Framework: [Full-Lifecycle Agentic Software Engineering v1.1.0](https://github.com/dsergovic/research/blob/main/docs/Full-Lifecycle%20Agentic%20Software%20Engineering.md)  
 Blueprint: `docs/agent_blueprint.md`  
 Spikes: `docs/spikes/` (S1–S6 resolved 2026-07-28)  
 Backlog: `docs/backlog.md`
 
+## How this file is used: attach once, paste one paragraph
+
+**Attach this file in Cursor** alongside `docs/agent_blueprint.md` and the milestone's spike findings. Then paste **only** the short ready-to-paste block from §5 for the one milestone you are handing off.
+
+The operator's clipboard work is one paragraph. Everything long — the Definition of Done (§2), the self-check tables (§3), the known traps (§4) — stays **in this file** as the agent's checklist. The agent reads those sections from the attached file and copies the relevant §3 table into the PR body itself. **The operator never pastes §2, §3, or §4 into a chat.**
+
+Two rules survive from the older operator-only posture:
+
+- **The agent implements only the milestone named in the pasted prompt.** Attaching this file exposes every milestone's prompt; that is not an invitation to start M4 while M3 is open, or to read ahead and pre-build.
+- **§1, §7, and §8 remain operator work.** Branch cutting, local prerequisites, and the smoke list are not agent tasks.
+
 ## What is in this file
 
-| § | Section | Audience |
+| § | Section | Who reads it |
 | --- | --- | --- |
 | 1 | Hand-off checklist | Operator |
-| 2 | Definition of Done before opening the PR | Operator → pasted into implementer prompts |
-| 3 | Self-check tables (3.1 platform M1–M4; 3.2 data/UI M5–M6) | Implementer completes in PR body |
-| 4 | Known traps (permanent) | Implementer |
-| 5 | **Implementer hand-offs (Cursor)** — template + ready-to-paste M1–M6 | Operator → Cursor |
-| 6 | **Dual-review hand-offs (Perplexity Computer)** — policy + ready-to-paste | Operator → Computer |
+| 2 | Definition of Done before opening the PR | Implementer, from the attached file |
+| 3 | Self-check tables (3.1 platform M1–M4; 3.2 data/UI M5–M6) | Implementer copies the applicable table into the PR body |
+| 4 | Known traps (permanent) | Implementer, from the attached file |
+| 5 | **Implementer hand-offs (Cursor)** — template + short paste blocks M1–M6 | Operator pastes one block |
+| 6 | **Dual-review hand-offs (Perplexity Computer)** — policy + short paste blocks | Operator pastes one block; reviewers read §6.1–§6.2 from the repo |
 | 7 | Local prerequisites | Operator |
 | 8 | Operator smoke (Phase 4 quick list) | Operator |
 
@@ -32,15 +40,15 @@ Backlog: `docs/backlog.md`
 1. `git checkout dev && git pull` — cut the milestone branch from current **`dev`** (integration / day-to-day working area; not `main`).
 2. Confirm the spike finding for this milestone is merged and you accept it (S1→M1, S3→M2, S2→M3, S4→M4; S5/S6 are cross-cutting and already folded in).
 3. Open the repo in Cursor and start a **fresh agent chat** (never reuse a prior milestone's chat).
-4. Attach blueprint context: `@docs/agent_blueprint.md`  
+4. Attach context — **this is the step that replaces copy-paste**: `@docs/agent_blueprint.md` **and `@docs/handoff-prompts.md`** (so §2, §3, and §4 are readable in-chat without you pasting them).  
    For platform milestones also attach:
    - M1: `@docs/spikes/s1-chatgpt-search-contract.md` `@docs/spikes/s5-auth-state-detection.md` `@docs/spikes/s6-long-history-reach.md`
    - M2: `@docs/spikes/s3-perplexity-thread-contract.md` + S5/S6
    - M3: `@docs/spikes/s2-claude-recents-contract.md` + S5/S6
    - M4: `@docs/spikes/s4-gemini-history-contract.md` + S5/S6
-   - M5/M6: blueprint only (plus M5 notes in blueprint §10).
+   - M5/M6: no spikes — the two attachments above are the whole set (plus M5 notes in blueprint §10).
 5. Enable terminal auto-run for `npm`, `node`, `git` as you prefer; deny force-push and merge to `dev` or `main`.
-6. Paste the milestone prompt from §5, followed by the literal text of §2, the relevant §3 table, and §4. Step away.
+6. Paste **only** the short §5.x block for this one milestone. Do **not** paste §2, §3, or §4 by hand — the block tells the agent to read them from the attached file. Step away.
 7. On the agent's PR: run the dual review per §6, then run the §8 operator smoke yourself with `extension/` loaded unpacked.
 8. Merge to `dev` yourself once review and smoke pass, then reconcile blueprint Version/Changelog and `docs/backlog.md` (Phase 4). Promote `dev` → `main` only as a separate human gate when you want a stabler line.
 
@@ -86,9 +94,9 @@ M5 (data-only selector pack) and M6 (debug panel + optional ping) have no lab fa
 
 ## 3. Self-check tables
 
-### 3.1 Platform milestones (M1–M4)
+**The implementer copies the applicable table out of this file into the PR body and fills the evidence column.** The operator does not paste these tables into the chat — the agent has the file attached and reads it here.
 
-Copy into the PR body and fill the evidence column.
+### 3.1 Platform milestones (M1–M4)
 
 | # | Check | Evidence |
 | --- | --- | --- |
@@ -136,63 +144,72 @@ Permanent list, distilled from shipped-milestone review scars. These apply to **
 
 ## 5. Implementer hand-offs (Cursor)
 
-Paste one of these into a **fresh Cursor agent chat** with the §1 step 4 attachments.
+Paste one of these into a **fresh Cursor agent chat** with the §1 step 4 attachments — blueprint, this file, and the milestone's spikes.
 
-> **Operator note:** this file is never attached in Cursor, so paste §2 (Definition of Done), §3.1 or §3.2 (self-check table), and §4 (Known traps) as literal text **below** the milestone prompt. The prompt's reference to "the Definition of Done and Known traps included in this message" then resolves.
+**Minimum operator paste** — the whole clipboard job for a milestone looks like this:
+
+```text
+@docs/agent_blueprint.md @docs/handoff-prompts.md @docs/spikes/s2-claude-recents-contract.md
+<paste §5.3 block>
+```
+
+Nothing else. If you find yourself scrolling up to copy a table, stop: the agent can read it in the attached file, and §5.x already told it to.
 
 ### 5.0 Template (any milestone)
 
-> Read `docs/agent_blueprint.md` and any spike files attached in this chat. Implement **Milestone \<N\> only**. Operate under the Mandatory Autonomy Guardrails and Implementer Independence tiers in the blueprint (framework §3 / §3.5): work exclusively on branch `feature/agent-m\<N\>-\<slug\>` cut from `dev`; respect the 5-attempt stop-loss and 25-attempt milestone budget; implement against the pre-approved **behavioral** acceptance criteria for this milestone. Codified tests may be authored as task 1 and implemented in the same milestone once written to match behavioral AC and spike contracts — but you must never weaken behavioral AC. Escalate anything on the blueprint escalation list instead of deciding it yourself. Note Tier 2 decisions under a **Choices made** heading in the PR description. Do not ask me for permission on individual file edits. Initialize directories and files as needed, run npm test/lint/format, fix errors automatically, verify green.
+> Read `docs/agent_blueprint.md`, any spike files attached in this chat, and — in the attached `docs/handoff-prompts.md` — **§2 (Definition of Done)**, **§3 (self-check table: use §3.1 for M1–M4, §3.2 for M5–M6)**, and **§4 (Known traps)**. Do not ask me to paste those sections; read them from the file. Implement **Milestone \<N\> only** — ignore the other milestones' prompts in §5 of that file. Operate under the Mandatory Autonomy Guardrails and Implementer Independence tiers in the blueprint (framework §3 / §3.5): work exclusively on branch `feature/agent-m\<N\>-\<slug\>` cut from `dev`; respect the 5-attempt stop-loss and 25-attempt milestone budget; implement against the pre-approved **behavioral** acceptance criteria for this milestone. Codified tests may be authored as task 1 and implemented in the same milestone once written to match behavioral AC and spike contracts — but you must never weaken behavioral AC. Escalate anything on the blueprint escalation list instead of deciding it yourself. Note Tier 2 decisions under a **Choices made** heading in the PR description. Do not ask me for permission on individual file edits. Initialize directories and files as needed, run npm test/lint/format, fix errors automatically, verify green.
 >
-> Before opening the PR you must satisfy the **Definition of Done** and complete the **Self-check table** included in this message, and you must have read the **Known traps** list. The PR body carries Choices made (including how you handled every residual risk from the attached spikes) plus the filled self-check table with real evidence pointers. Do not claim anything you have not tested. Open a PR to `dev` when done. **Do not merge.** I am stepping away from the laptop.
+> Before opening the PR you must satisfy **§2** in full and have worked **§4** as a checklist. Copy the applicable **§3** table into the PR body yourself and fill every evidence cell — that table is your job to transcribe, not mine. The PR body carries Choices made (including how you handled every residual risk from the attached spikes) plus the filled self-check table with real evidence pointers. Do not claim anything you have not tested. Open a PR to `dev` when done. **Do not merge.** I am stepping away from the laptop.
 
 ### 5.1 M1 — ChatGPT only, end-to-end
 
-> Read `docs/agent_blueprint.md`, `docs/spikes/s1-chatgpt-search-contract.md`, `docs/spikes/s5-auth-state-detection.md`, and `docs/spikes/s6-long-history-reach.md`. Implement **Milestone 1 only** (ChatGPT end-to-end, including Projects via search — not list-only). Operate under the Mandatory Autonomy Guardrails and Implementer Independence tiers in the blueprint: branch `feature/agent-m1-chatgpt-e2e` cut from `dev`; 5-attempt stop-loss; 25-attempt milestone budget; behavioral AC for M1 are binding; prefer session `GET /backend-api/conversations/search` per S1; deep links `https://chatgpt.com/c/{id}`; capability label full-text; never store auth tokens or message bodies; no other platforms. First tasks: scaffold extension + pinned devtooling + unit tests for pure logic, then ChatGPT adapter + popup. Capture redacted fixtures after the first successful live shape if you can; otherwise ship fixture stubs and document the live-capture gap in Choices made. Escalate anything on the escalation list.
+> Read `docs/agent_blueprint.md`, `docs/spikes/s1-chatgpt-search-contract.md`, `docs/spikes/s5-auth-state-detection.md`, `docs/spikes/s6-long-history-reach.md`, and **§2, §3.1, and §4 of the attached `docs/handoff-prompts.md`**. Implement **Milestone 1 only** (ChatGPT end-to-end, including Projects via search — not list-only); ignore the other milestones in §5 of that file. Operate under the Mandatory Autonomy Guardrails and Implementer Independence tiers in the blueprint: branch `feature/agent-m1-chatgpt-e2e` cut from `dev`; 5-attempt stop-loss; 25-attempt milestone budget; behavioral AC for M1 are binding; prefer session `GET /backend-api/conversations/search` per S1; deep links `https://chatgpt.com/c/{id}`; capability label full-text; never store auth tokens or message bodies; no other platforms. First tasks: scaffold extension + pinned devtooling + unit tests for pure logic, then ChatGPT adapter + popup. Capture redacted fixtures after the first successful live shape if you can; otherwise ship fixture stubs and document the live-capture gap in Choices made. Escalate anything on the escalation list.
 >
-> Apply the **Known traps** list in this message — M1 owns the tab-adoption, cancel-isolation, and `errorCode` paths that every later milestone inherits, so get them right here. Satisfy the **Definition of Done** and complete the **platform Self-check table** in the PR body before opening the PR. Open a PR to `dev` with Choices made. **Do not merge.** I am stepping away.
+> Work the **§4 Known traps** list as a checklist — M1 owns the tab-adoption, cancel-isolation, and `errorCode` paths that every later milestone inherits, so get them right here. Satisfy **§2** and copy the **§3.1 platform self-check table** into the PR body with filled evidence cells before opening the PR. Open a PR to `dev` with Choices made. **Do not merge.** I am stepping away.
 
 ### 5.2 M2 — Perplexity
 
-> Read `docs/agent_blueprint.md`, `docs/spikes/s3-perplexity-thread-contract.md`, `docs/spikes/s5-auth-state-detection.md`, and `docs/spikes/s6-long-history-reach.md`. Implement **Milestone 2 only** (Perplexity). Branch `feature/agent-m2-perplexity` cut from `dev`. Endpoint-first: `POST /rest/thread/list_ask_threads` with session cookies; capability title-match until proven otherwise; deep link `/search/{slug}`; prefill `?q=`; include Spaces per the S3 ladder. Keep M1 green. If a Spaces route is not live-proven, gate it off rather than ship an unproven probe, and record the gate in Choices made with a backlog ID.
+> Read `docs/agent_blueprint.md`, `docs/spikes/s3-perplexity-thread-contract.md`, `docs/spikes/s5-auth-state-detection.md`, `docs/spikes/s6-long-history-reach.md`, and **§2, §3.1, and §4 of the attached `docs/handoff-prompts.md`**. Implement **Milestone 2 only** (Perplexity) — ignore the other milestones in §5 of that file. Branch `feature/agent-m2-perplexity` cut from `dev`. Endpoint-first: `POST /rest/thread/list_ask_threads` with session cookies; capability title-match until proven otherwise; deep link `/search/{slug}`; prefill `?q=`; include Spaces per the S3 ladder. Keep M1 green. If a Spaces route is not live-proven, gate it off rather than ship an unproven probe, and record the gate in Choices made with a backlog ID.
 >
-> Title-match means a client-side filter: **cap after filtering, never before** (see Known traps in this message). Satisfy the **Definition of Done** and complete the **platform Self-check table** in the PR body. Open PR to `dev`; **do not merge.**
+> Title-match means a client-side filter: **cap after filtering, never before** (see §4 Known traps). Satisfy **§2** and copy the **§3.1 platform self-check table** into the PR body with filled evidence cells. Open PR to `dev`; **do not merge.**
 
 ### 5.3 M3 — Claude
 
-> Read `docs/agent_blueprint.md`, `docs/spikes/s2-claude-recents-contract.md`, `docs/spikes/s5-auth-state-detection.md`, and `docs/spikes/s6-long-history-reach.md`. Implement **Milestone 3 only** (Claude). Branch `feature/agent-m3-claude` cut from `dev`. Title-match; deep link `https://claude.ai/chat/{uuid}`; Projects in scope; session org APIs preferred over pure DOM when available. Keep prior milestones green.
+> Read `docs/agent_blueprint.md`, `docs/spikes/s2-claude-recents-contract.md`, `docs/spikes/s5-auth-state-detection.md`, `docs/spikes/s6-long-history-reach.md`, and **§2, §3.1, and §4 of the attached `docs/handoff-prompts.md`**. Implement **Milestone 3 only** (Claude) — ignore the other milestones in §5 of that file. Branch `feature/agent-m3-claude` cut from `dev`. Title-match; deep link `https://claude.ai/chat/{uuid}`; Projects in scope; session org APIs preferred over pure DOM when available. Keep prior milestones green.
 >
-> Claude fans out across root Recents **and** Projects, so the container-coverage traps in this message are the whole milestone: breadth-first across projects, mixed success ⇒ `truncated`, unattempted or failed coverage never authorizes `empty`, soft page ceilings documented as a separate platform limit. Any Projects route you could not confirm in the Network tab is **unverified** in Choices made with a backlog ID — do not claim Project-only findability works. Satisfy the **Definition of Done** and complete the **platform Self-check table** in the PR body. Open PR to `dev`; **do not merge.**
+> Claude fans out across root Recents **and** Projects, so the container-coverage traps in §4 are the whole milestone: breadth-first across projects, mixed success ⇒ `truncated`, unattempted or failed coverage never authorizes `empty`, soft page ceilings documented as a separate platform limit. Any Projects route you could not confirm in the Network tab is **unverified** in Choices made with a backlog ID — do not claim Project-only findability works. Satisfy **§2** and copy the **§3.1 platform self-check table** into the PR body with filled evidence cells. Open PR to `dev`; **do not merge.**
 
 ### 5.4 M4 — Gemini
 
-> Read `docs/agent_blueprint.md`, `docs/spikes/s4-gemini-history-contract.md`, `docs/spikes/s5-auth-state-detection.md`, and `docs/spikes/s6-long-history-reach.md`. Implement **Milestone 4 only** (Gemini). Branch `feature/agent-m4-gemini` cut from `dev`. DOM-first title-match; deep link `https://gemini.google.com/app/{id}`; honest limitations from S4; four-platform fan-out timeouts 8s/15s. Keep prior milestones green. README gains the per-platform capability matrix.
+> Read `docs/agent_blueprint.md`, `docs/spikes/s4-gemini-history-contract.md`, `docs/spikes/s5-auth-state-detection.md`, `docs/spikes/s6-long-history-reach.md`, and **§2, §3.1, and §4 of the attached `docs/handoff-prompts.md`**. Implement **Milestone 4 only** (Gemini) — ignore the other milestones in §5 of that file. Branch `feature/agent-m4-gemini` cut from `dev`. DOM-first title-match; deep link `https://gemini.google.com/app/{id}`; honest limitations from S4; four-platform fan-out timeouts 8s/15s. Keep prior milestones green. README gains the per-platform capability matrix.
 >
-> DOM-first raises two traps in this message above the others: never adopt an existing Gemini tab without proving content-script reachability (and handle a discarded tab), and keep the reach limitation honest — a DOM scan that did not reach the item is `unavailable`/`timeout`, not `empty`. Satisfy the **Definition of Done** and complete the **platform Self-check table** in the PR body. Open PR to `dev`; **do not merge.**
+> DOM-first raises two §4 traps above the others: never adopt an existing Gemini tab without proving content-script reachability (and handle a discarded tab), and keep the reach limitation honest — a DOM scan that did not reach the item is `unavailable`/`timeout`, not `empty`. Satisfy **§2** and copy the **§3.1 platform self-check table** into the PR body with filled evidence cells. Open PR to `dev`; **do not merge.**
 
 ### 5.5 M5 — Selector hotfix manifest (data-only)
 
-> Read `docs/agent_blueprint.md`. Implement **Milestone 5 only**. Branch `feature/agent-m5-selector-manifest` cut from `dev`. Local data-only pack + optional HTTPS fetch/merge from an allowlisted `cogis.ai` path; fail closed to the local pack; reject executable payloads; no `eval`, no `new Function`, no dynamic remote import. Any proposal to widen the remote pack beyond data-only is an escalation, not a Tier 2 choice.
+> Read `docs/agent_blueprint.md` and **§2, §3.2, and §4 of the attached `docs/handoff-prompts.md`**. Implement **Milestone 5 only** — ignore the other milestones in §5 of that file. Branch `feature/agent-m5-selector-manifest` cut from `dev`. Local data-only pack + optional HTTPS fetch/merge from an allowlisted `cogis.ai` path; fail closed to the local pack; reject executable payloads; no `eval`, no `new Function`, no dynamic remote import. Any proposal to widen the remote pack beyond data-only is an escalation, not a Tier 2 choice.
 >
-> Satisfy the **Definition of Done** and complete the shorter **data/UI Self-check table** in the PR body. The honesty rules apply to your fail-closed claim: do not state that a malformed payload falls back to local unless a test proves it. Open PR to `dev`; **do not merge.**
+> Satisfy **§2** and copy the shorter **§3.2 data/UI self-check table** into the PR body with filled evidence cells. The §2.4 honesty rules apply to your fail-closed claim: do not state that a malformed payload falls back to local unless a test proves it. Open PR to `dev`; **do not merge.**
 
 ### 5.6 M6 — Debug panel + optional ping
 
-> Read `docs/agent_blueprint.md`. Implement **Milestone 6 only**. Branch `feature/agent-m6-debug-panel` cut from `dev`. Debug panel: per-platform latency, hit counts, last status, selector pack version. Optional anonymous ping **default off**; payload only `platformId`, `selectorPackVersion`, `errorClass` (+ optional extension version). No query text storage or transmission. Pointing any build at a production ping endpoint is an escalation.
+> Read `docs/agent_blueprint.md` and **§2, §3.2, and §4 of the attached `docs/handoff-prompts.md`**. Implement **Milestone 6 only** — ignore the other milestones in §5 of that file. Branch `feature/agent-m6-debug-panel` cut from `dev`. Debug panel: per-platform latency, hit counts, last status, selector pack version. Optional anonymous ping **default off**; payload only `platformId`, `selectorPackVersion`, `errorClass` (+ optional extension version). No query text storage or transmission. Pointing any build at a production ping endpoint is an escalation.
 >
-> Satisfy the **Definition of Done** and complete the shorter **data/UI Self-check table** in the PR body. Prove default-off with a test asserting zero network calls, and confirm M1–M5 behavior is unchanged with the panel closed. Open PR to `dev`; **do not merge.**
+> Satisfy **§2** and copy the shorter **§3.2 data/UI self-check table** into the PR body with filled evidence cells. Prove default-off with a test asserting zero network calls, and confirm M1–M5 behavior is unchanged with the panel closed. Open PR to `dev`; **do not merge.**
 
 ### 5.7 Optional: live selector polish (human + short Cursor assist)
 
 If a platform milestone fails on live DOM/header drift, do **not** reopen product spikes. Run a short fix branch:
 
-> Read the blueprint and the relevant spike. Fix only the request headers/selectors for \<platform\> so search returns pointers again. Update `local-pack.json` and redacted fixtures. No new platforms, no new behavior. The Known traps in this message still apply — in particular, do not "fix" a failure by letting it report `empty`. Branch from `dev`; open PR to `dev`; do not merge.
+> Read the blueprint, the relevant spike, and **§4 of the attached `docs/handoff-prompts.md`**. Fix only the request headers/selectors for \<platform\> so search returns pointers again. Update `local-pack.json` and redacted fixtures. No new platforms, no new behavior. The §4 Known traps still apply — in particular, do not "fix" a failure by letting it report `empty`. A fix branch does not need the full §3 table; §2.1 green gates and §2.4 honesty rules still bind. Branch from `dev`; open PR to `dev`; do not merge.
 
 ---
 
 ## 6. Dual-review hand-offs (Perplexity Computer)
 
 **This section is for the dual Claude + Codex PR review workflow, which runs in Perplexity Computer — not in Cursor.** Cursor implements; Computer reviews. Never hand a review prompt to the implementing agent, and never hand an implementation prompt to the reviewers.
+
+**Same paste discipline as §5.** Reviewers clone the repo to run the gates, so they can read this file at `docs/handoff-prompts.md` — the policy in §6.1 and the blocking/non-blocking split in §6.2 are theirs to read, not yours to paste. If the Computer Space is already scoped to the repo, the paste is just the §6.3 or §6.4 block; if it is not, add the repo or attach `docs/handoff-prompts.md` once per Space rather than pasting policy per review.
 
 ### 6.1 Review loop policy
 
@@ -233,21 +250,23 @@ If a platform milestone fails on live DOM/header drift, do **not** reopen produc
 
 > Review PR #\<N\> on `dsergovic/cogis` (milestone M\<N\>, targeting `dev`). This is a **dual review**: the parent runs both Claude and Codex over the same pinned diff and each writes its own findings independently — do not read or converge on the other reviewer's output before writing yours.
 >
+> Read `docs/handoff-prompts.md` in the repo first: **§6.1** (review loop policy and accepted precedents), **§6.2** (blocking vs non-blocking), **§2** (the Definition of Done the implementer was held to), and **§4** (Known traps). Those are your rubric — read them from the file rather than asking me to paste them.
+>
 > Steps:
 >
 > 1. **Verify HEAD.** Record the exact head SHA under review (`gh pr view <N> --json headRefOid`) and review that commit. If the branch moves mid-review, restart against the new SHA and say so.
 > 2. **Run the gates yourself** on that SHA: `npm ci && npm test && npm run lint && npm run format:check`. Report actual output; do not assume CI is green.
 > 3. Read the blueprint behavioral AC for this milestone, the spike findings it depends on, and the PR body's Choices made + self-check table. Verify the self-check evidence pointers actually exist and actually prove what they claim — an evidence cell naming a test that does not assert the behavior is itself a blocker.
-> 4. Work the **Known traps** list (§4 of `docs/handoff-prompts.md`) as an explicit checklist against the diff.
+> 4. Work the **§4 Known traps** list as an explicit checklist against the diff.
 > 5. **Write findings to a review file outside the repo** (e.g. `/tmp/cogis-review/pr<N>-<reviewer>-pass1.md`) so review artifacts never land in the PR. One file per reviewer.
-> 6. Classify every finding as **blocking** or **non-blocking** per §6.2. Blocking means: correctness/honesty defect, auth mislabel, security/privacy issue, red gate, violated behavioral AC, prior-milestone regression, silent escalation-list decision, scope creep or unescalated dependency, or an unsupported claim in the PR body. Everything else is non-blocking → comment or backlog row, not a change request.
+> 6. Classify every finding as **blocking** or **non-blocking** using the §6.2 lists verbatim. Everything not on the blocking list is non-blocking → comment or backlog row, not a change request.
 > 7. Do not re-litigate the accepted precedents in §6.1 unless this PR regresses one.
 >
 > **Do not post anything to GitHub yet** — hold the findings until the operator asks for them. **Do not approve and do not merge**; merge is a human gate.
 
 ### 6.4 Ready-to-paste second pass (verify-only)
 
-> Second dual review of PR #\<N\> — **verify-only mode**. The implementer has pushed fixes for the pass-1 blockers only.
+> Second dual review of PR #\<N\> — **verify-only mode**. The implementer has pushed fixes for the pass-1 blockers only. §6.1 of `docs/handoff-prompts.md` in the repo defines this pass; re-read it rather than asking for a paste.
 >
 > 1. Record the new head SHA and diff it against the pass-1 SHA.
 > 2. Re-run `npm test`, `npm run lint`, `npm run format:check` on the new SHA.
@@ -289,5 +308,6 @@ Reviewers never merge and never approve. After pass 2 is clean, the operator run
 
 | Date | Change |
 | --- | --- |
+| 2026-07-30 | Switched the hand-off from copy-paste to attach-once. This file is now **attached in Cursor** instead of withheld; the operator pastes only the short §5.x block, and each §5.x prompt tells the agent to read §2/§3/§4 from the attached file and transcribe the §3 table into the PR body itself. §6 review prompts reference §6.1/§6.2 in the repo instead of inlining them. |
 | 2026-07-30 | Renamed from `cursor-handoff-prompts.md`; declared the official source of truth for all hand-off prompts. Split implementer (Cursor) and dual-review (Perplexity Computer) audiences. Added §2 Definition of Done, §3 self-check tables, §4 Known traps, and §6 review loop policy from M3 review lessons. |
 | 2026-07-28 | Initial operator hand-off prompts alongside blueprint 0.2.0. |
