@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Cogis — AI Search",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Search your own ChatGPT, Perplexity, Claude, and Gemini conversation history from a single popup and open deep links. Dev-unpacked V1.",
   "action": {
     "default_title": "Cogis — AI Search",
@@ -27,7 +27,8 @@
     "https://www.perplexity.ai/*",
     "https://perplexity.ai/*",
     "https://claude.ai/*",
-    "https://gemini.google.com/*"
+    "https://gemini.google.com/*",
+    "https://cogis.ai/packs/*"
   ],
   "content_scripts": [
     {

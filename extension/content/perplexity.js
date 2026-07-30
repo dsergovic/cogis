@@ -34,18 +34,31 @@
         .then(function (adapterMod) {
           return import(chrome.runtime.getURL('lib/selectors/loader.js')).then(
             function (loaderMod) {
-              try {
-                const pack = loaderMod.getPlatformSelectors('perplexity');
-                if (pack && pack.selectors && pack.selectors.signIn) {
-                  signInSel = pack.selectors.signIn;
+              function hydrateFromPack() {
+                try {
+                  const pack = loaderMod.getPlatformSelectors('perplexity');
+                  if (pack && pack.selectors && pack.selectors.signIn) {
+                    signInSel = pack.selectors.signIn;
+                  }
+                  if (pack && pack.loginUrl) {
+                    loginUrl = pack.loginUrl;
+                  }
+                } catch (_e) {
+                  // Keep defaults if pack hydrate fails.
                 }
-                if (pack && pack.loginUrl) {
-                  loginUrl = pack.loginUrl;
-                }
-              } catch (_e) {
-                // Keep defaults if pack hydrate fails.
+                return adapterMod;
               }
-              return adapterMod;
+              var refreshOpts = {
+                fetchImpl:
+                  typeof fetch === 'function'
+                    ? fetch.bind(globalThis)
+                    : function () {
+                        return Promise.reject(new TypeError('fetch unavailable'));
+                      },
+              };
+              return loaderMod
+                .refreshSelectorPack(refreshOpts)
+                .then(hydrateFromPack, hydrateFromPack);
             },
           );
         })

@@ -14,8 +14,37 @@ import {
   shouldCloseSearchTab,
   shouldReloadLabTab,
 } from '../lib/orchestration.js';
+import { getSelectorPackStatus, refreshSelectorPack } from '../lib/selectors/loader.js';
 
 const tracker = createRequestTracker();
+
+/**
+ * Best-effort remote pack refresh. Failures stay on the local pack and never block search.
+ */
+function kickSelectorPackRefresh() {
+  void refreshSelectorPack().then(() => {
+    const status = getSelectorPackStatus();
+    if (status.lastRefreshOk === false) {
+      console.info('[cogis] selector pack refresh failed closed to local', {
+        errorCode: status.lastErrorCode,
+        activeVersion: status.activeVersion,
+      });
+    } else if (status.source === 'merged') {
+      console.info('[cogis] selector pack merged', {
+        activeVersion: status.activeVersion,
+        localVersion: status.localVersion,
+      });
+    }
+  });
+}
+
+kickSelectorPackRefresh();
+chrome.runtime.onInstalled.addListener(() => {
+  kickSelectorPackRefresh();
+});
+chrome.runtime.onStartup.addListener(() => {
+  kickSelectorPackRefresh();
+});
 
 const IMPLEMENTED = new Set(PLATFORM_ORDER);
 
