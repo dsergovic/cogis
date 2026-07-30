@@ -2,11 +2,12 @@
 
 ## Privacy posture
 
-- Queries are processed locally and only sent into lab surfaces the user already uses (ChatGPT in Milestone 1).
+- Queries are processed locally and only sent into lab surfaces the user already uses (ChatGPT, Perplexity, Claude, Gemini).
 - Cogis does not operate a search backend that receives query text.
 - Session cookies and access tokens are never copied into extension storage or transmitted to Cogis infrastructure. Tokens retrieved from the lab session endpoint are held in memory for the in-flight request only.
 - Cogis does not scrape, index, store, or redistribute conversation message bodies.
 - Nothing is cached between searches; each query re-hits the lab.
+- Optional selector-manifest fetch from `cogis.ai` (M5) carries no query text — only a data-only JSON pack of selectors / URL patterns.
 
 ## ToS posture
 

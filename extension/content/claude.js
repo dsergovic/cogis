@@ -38,17 +38,31 @@
         .then(function (adapterMod) {
           return import(chrome.runtime.getURL('lib/selectors/loader.js')).then(
             function (loaderMod) {
-              try {
-                const pack = loaderMod.getPlatformSelectors('claude');
-                if (pack && pack.selectors && pack.selectors.loginShell) {
-                  loginShellSel = pack.selectors.loginShell;
+              function hydrateFromPack() {
+                try {
+                  const pack = loaderMod.getPlatformSelectors('claude');
+                  if (pack && pack.selectors && pack.selectors.loginShell) {
+                    loginShellSel = pack.selectors.loginShell;
+                  }
+                  if (pack && pack.loginUrl) {
+                    loginUrl = pack.loginUrl;
+                  }
+                } catch (_e) {
+                  // Keep defaults if pack hydrate fails.
                 }
-                if (pack && pack.loginUrl) {
-                  loginUrl = pack.loginUrl;
-                }
-              } catch (_e) {
-                // Keep defaults if pack hydrate fails.
+                return adapterMod;
               }
+              // Local pack first — never block search on a hung remote pack fetch (B2).
+              hydrateFromPack();
+              var refreshOpts = {
+                fetchImpl:
+                  typeof fetch === 'function'
+                    ? fetch.bind(globalThis)
+                    : function () {
+                        return Promise.reject(new TypeError('fetch unavailable'));
+                      },
+              };
+              loaderMod.refreshSelectorPack(refreshOpts).then(hydrateFromPack, function () {});
               return adapterMod;
             },
           );

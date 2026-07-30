@@ -11,8 +11,9 @@ Single-purpose Chrome Manifest V3 extension that searches the user's own convers
 | M1        | ChatGPT end-to-end (including Projects via search) | Merged to `dev` |
 | M2        | Perplexity end-to-end (Library + gated Spaces)     | Merged to `dev` |
 | M3        | Claude end-to-end (Recents + Projects)             | Merged to `dev` |
-| M4        | Gemini                                             | In progress     |
-| M5–M6     | Selector pack remote merge, debug panel            | Not started     |
+| M4        | Gemini                                             | Merged to `dev` |
+| M5        | Selector hotfix manifest (data-only)               | In progress     |
+| M6        | Debug panel + optional ping                        | Not started     |
 
 ## Docs
 
@@ -65,9 +66,13 @@ Popup footnote: _Some AIs do not support full-text search._
 - Claude: session-cookie org APIs (`GET /api/organizations` → paginated `chat_conversations` + Projects enumeration). Client-side title filter; no stable prefill URL. **Reach ceilings (soft caps):** root ≈ 5 × pageSize (~100 conversations); per-project ≈ 3 × pageSize (~60). Soft caps still report `empty` by design when the scanned window has no title match (unread older history is a documented platform limit — **BL-024**). **Incomplete scans are different:** HTTP failure, deadline/fetch truncation, or unattempted/failed Projects → `unavailable`/`timeout`, not `empty` (see BL-022). **Projects:** routes inferred / not yet live Network-tab confirmed — Project-only findability unverified until operator smoke; ladder uses breadth-first page-1 across projects. DOM Recents search fallback deferred (BL-023; M1/M2 endpoint-only precedent).
 - Gemini: **DOM-first** history rail (S4) — no stable first-party history search endpoint at desk. Title-match on `/app/{id}` links; cascade deep link → `https://gemini.google.com/app` (no prefill). **Reach ceilings (soft caps):** ≈ 8 scroll rounds / ~120 distinct history items still authorize `empty` by design when the **history rail (or empty-history state) is proven** and the scanned window has no title match (S6 — unread older history is a platform limit). A proven rail without the full Sign-in upsell is an S5 owner/authenticated signal (chip not required). The full S5 login shell still wins over a rail-only heuristic (logged-out empty-history copy must not become `empty`). **Incomplete scans are different:** budget exhausted mid-scroll → `timeout` (`history_budget_exhausted`); missing/unproven history rail → `unavailable` (`history_rail_missing`); never `empty`. Account chip alone does not prove the rail. Selectors are stub-level pending live polish (highest churn; M5). Flat history + any visible Gems/folder links exposing `/app/` ids; no invented Projects clone.
 
+## Selector pack (M5)
+
+Bundled `extension/lib/selectors/local-pack.json` (mirrored by `local-pack.js`) is always enough to search. On startup (and when a content script first loads its adapter), the extension may HTTPS-fetch an optional data-only hotfix from `https://cogis.ai/packs/selectors.json` in the background with a short fetch timeout. The remote document may overlay CSS selectors, wait-predicate strings, and same-host URL / relative endpoint path strings only — absolute off-host endpoints are rejected. Fetch or parse failure, timeout, and any executable-looking payload **fail closed to the local pack**; content scripts hydrate from local immediately so **search is never blocked** on the remote fetch. No `eval`, `new Function`, or remote code import. Pack version / source are exposed via `getSelectorPackStatus()` for the M6 debug panel.
+
 ## Privacy & ToS
 
-See [NOTICE](./NOTICE). No API keys. No stored auth. No message-body storage.
+See [NOTICE](./NOTICE). No API keys. No stored auth. No message-body storage. Selector-manifest fetch carries no query text.
 
 ## License
 
