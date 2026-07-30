@@ -45,12 +45,140 @@ export function shouldWatchdogTimeout(input) {
   );
 }
 
+/** Max `tabs.create` calls allowed inside one `ensurePlatformTab` (BL-001). */
+export const MAX_ENSURE_TAB_CREATES = 1;
+
+/**
+ * @param {Iterable<number>|Set<number>|null|undefined} protectedTabIds
+ * @returns {Set<number>}
+ */
+function asProtectedSet(protectedTabIds) {
+  if (!protectedTabIds) return new Set();
+  return protectedTabIds instanceof Set ? protectedTabIds : new Set(protectedTabIds);
+}
+
 /**
  * Only close lab tabs Cogis opened for search — never user-owned tabs.
- * @param {{ createdByUs: boolean, tabId: number|null|undefined }} input
+ * When a newer request is alive, still close **orphan** created tabs; skip only
+ * tabIds the newer request has already recorded in its `state.tabs` (BL-001).
+ *
+ * @param {{
+ *   createdByUs: boolean,
+ *   tabId: number|null|undefined,
+ *   protectedTabIds?: Iterable<number>|Set<number>|null,
+ * }} input
  */
 export function shouldCloseSearchTab(input) {
-  return Boolean(input.createdByUs && input.tabId != null);
+  if (!input.createdByUs || input.tabId == null) return false;
+  if (asProtectedSet(input.protectedTabIds).has(input.tabId)) return false;
+  return true;
+}
+
+/**
+ * Whether ensurePlatformTab may call tabs.create (bounded — BL-001).
+ * @param {number} createCount
+ */
+export function canCreateLabTab(createCount) {
+  return createCount < MAX_ENSURE_TAB_CREATES;
+}
+
+/**
+ * After ensurePlatformTab returns: keep for an active request, or discard a
+ * Cogis-created tab when the request was superseded mid-ensure (BL-001 litter).
+ * Never closes user-owned tabs, and never closes a tabId already claimed by a
+ * newer search's `state.tabs`.
+ *
+ * @param {{
+ *   requestStillActive: boolean,
+ *   createdByUs: boolean,
+ *   tabId: number|null|undefined,
+ *   protectedTabIds?: Iterable<number>|Set<number>|null,
+ * }} input
+ * @returns {{ keep: boolean, close: boolean }}
+ */
+export function resolveEnsuredTabOwnership(input) {
+  if (input.requestStillActive) {
+    return { keep: true, close: false };
+  }
+  if (input.createdByUs && input.tabId != null) {
+    if (asProtectedSet(input.protectedTabIds).has(input.tabId)) {
+      return { keep: false, close: false };
+    }
+    return { keep: false, close: true };
+  }
+  return { keep: false, close: false };
+}
+
+/**
+ * Tab ids a finishing request may close under BL-001 rules.
+ * @param {Iterable<{ created: boolean, tabId: number|null|undefined }>} tabs
+ * @param {{ protectedTabIds?: Iterable<number>|Set<number>|null }} [ctx]
+ * @returns {number[]}
+ */
+export function tabIdsSafeToClose(tabs, ctx = {}) {
+  const ids = [];
+  for (const tab of tabs) {
+    if (
+      shouldCloseSearchTab({
+        createdByUs: tab.created,
+        tabId: tab.tabId,
+        protectedTabIds: ctx.protectedTabIds,
+      })
+    ) {
+      ids.push(/** @type {number} */ (tab.tabId));
+    }
+  }
+  return ids;
+}
+
+/**
+ * TabIds recorded on every search except `exceptRequestId` — do not close these.
+ * @param {Iterable<[string, { tabs?: Map<string, { tabId: number|null|undefined }> }]>} searchStateEntries
+ * @param {string|null|undefined} exceptRequestId
+ * @returns {Set<number>}
+ */
+export function collectProtectedTabIds(searchStateEntries, exceptRequestId) {
+  /** @type {Set<number>} */
+  const protectedIds = new Set();
+  for (const [requestId, state] of searchStateEntries) {
+    if (exceptRequestId != null && requestId === exceptRequestId) continue;
+    if (!state?.tabs) continue;
+    for (const tab of state.tabs.values()) {
+      if (tab?.tabId != null) protectedIds.add(tab.tabId);
+    }
+  }
+  return protectedIds;
+}
+
+/**
+ * Request ids that must be cancelled when `incomingId` supersedes — based on
+ * `searchState` keys and optional tracker active id (popup CANCEL may already
+ * have nulled activeId; state keys still identify in-flight work).
+ *
+ * @param {{
+ *   searchStateKeys: Iterable<string>,
+ *   activeRequestId?: string|null,
+ *   incomingRequestId: string,
+ * }} input
+ * @returns {string[]}
+ */
+export function requestIdsToCancelOnSupersede(input) {
+  const ids = new Set();
+  for (const id of input.searchStateKeys) {
+    if (id && id !== input.incomingRequestId) ids.add(id);
+  }
+  if (input.activeRequestId && input.activeRequestId !== input.incomingRequestId) {
+    ids.add(input.activeRequestId);
+  }
+  return [...ids];
+}
+
+/**
+ * @param {number} myEpoch
+ * @param {number} currentEpoch
+ */
+export function isSearchEpochCurrent(myEpoch, currentEpoch) {
+  return myEpoch === currentEpoch;
 }
 
 /**

@@ -6,6 +6,13 @@ import {
   shouldCloseSearchTab,
   shouldReloadLabTab,
   pickLabTabCandidate,
+  canCreateLabTab,
+  MAX_ENSURE_TAB_CREATES,
+  resolveEnsuredTabOwnership,
+  tabIdsSafeToClose,
+  collectProtectedTabIds,
+  requestIdsToCancelOnSupersede,
+  isSearchEpochCurrent,
 } from '../../extension/lib/orchestration.js';
 import {
   PLATFORM_TIMEOUT_MS,
@@ -98,10 +105,100 @@ describe('withTimeout platform envelope', () => {
 });
 
 describe('shouldCloseSearchTab', () => {
-  it('only closes tabs Cogis created', () => {
+  it('only closes tabs Cogis created — never user-owned (created:false)', () => {
     expect(shouldCloseSearchTab({ createdByUs: true, tabId: 3 })).toBe(true);
     expect(shouldCloseSearchTab({ createdByUs: false, tabId: 3 })).toBe(false);
     expect(shouldCloseSearchTab({ createdByUs: true, tabId: null })).toBe(false);
+  });
+
+  it('closes orphans even when another search is live; skips protected tabIds only', () => {
+    expect(
+      shouldCloseSearchTab({
+        createdByUs: true,
+        tabId: 7,
+        protectedTabIds: new Set(),
+      }),
+    ).toBe(true);
+    expect(
+      shouldCloseSearchTab({
+        createdByUs: true,
+        tabId: 7,
+        protectedTabIds: new Set([7]),
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('superseding-search helpers (BL-001)', () => {
+  it('bounds ensurePlatformTab creates to one per call', () => {
+    expect(MAX_ENSURE_TAB_CREATES).toBe(1);
+    expect(canCreateLabTab(0)).toBe(true);
+    expect(canCreateLabTab(1)).toBe(false);
+  });
+
+  it('discards Cogis-created tabs when ensure finishes after supersede', () => {
+    expect(
+      resolveEnsuredTabOwnership({
+        requestStillActive: false,
+        createdByUs: true,
+        tabId: 11,
+      }),
+    ).toEqual({ keep: false, close: true });
+  });
+
+  it('never closes user-owned tabs after supersede', () => {
+    expect(
+      resolveEnsuredTabOwnership({
+        requestStillActive: false,
+        createdByUs: false,
+        tabId: 11,
+      }),
+    ).toEqual({ keep: false, close: false });
+  });
+
+  it('keeps tabs for the still-active request', () => {
+    expect(
+      resolveEnsuredTabOwnership({
+        requestStillActive: true,
+        createdByUs: true,
+        tabId: 11,
+      }),
+    ).toEqual({ keep: true, close: false });
+  });
+
+  it('lists orphan created tab ids; excludes protected and user-owned', () => {
+    const tabs = [
+      { created: true, tabId: 1 },
+      { created: false, tabId: 2 },
+      { created: true, tabId: 3 },
+      { created: true, tabId: null },
+    ];
+    expect(tabIdsSafeToClose(tabs, { protectedTabIds: new Set([3]) })).toEqual([1]);
+    expect(tabIdsSafeToClose(tabs, { protectedTabIds: new Set() })).toEqual([1, 3]);
+  });
+
+  it('collectProtectedTabIds skips the closing request', () => {
+    const entries = [
+      ['A', { tabs: new Map([['chatgpt', { tabId: 1, created: true }]]) }],
+      ['B', { tabs: new Map([['chatgpt', { tabId: 1, created: false }]]) }],
+    ];
+    expect([...collectProtectedTabIds(entries, 'A')]).toEqual([1]);
+    expect([...collectProtectedTabIds(entries, 'B')]).toEqual([1]);
+  });
+
+  it('requestIdsToCancelOnSupersede finds state keys when activeId is null', () => {
+    expect(
+      requestIdsToCancelOnSupersede({
+        searchStateKeys: ['A', 'B'],
+        activeRequestId: null,
+        incomingRequestId: 'B',
+      }),
+    ).toEqual(['A']);
+  });
+
+  it('isSearchEpochCurrent rejects stale fan-out', () => {
+    expect(isSearchEpochCurrent(1, 1)).toBe(true);
+    expect(isSearchEpochCurrent(1, 2)).toBe(false);
   });
 });
 

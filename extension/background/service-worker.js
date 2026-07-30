@@ -8,11 +8,16 @@ import {
   withTimeout,
 } from '../lib/timeouts.js';
 import {
+  canCreateLabTab,
+  collectProtectedTabIds,
+  isSearchEpochCurrent,
   pendingTerminalPlatforms,
   pickLabTabCandidate,
+  requestIdsToCancelOnSupersede,
+  resolveEnsuredTabOwnership,
   resolveWallExpiry,
-  shouldCloseSearchTab,
   shouldReloadLabTab,
+  tabIdsSafeToClose,
 } from '../lib/orchestration.js';
 import { getSelectorPackStatus, refreshSelectorPack } from '../lib/selectors/loader.js';
 import { getDebugStatsSnapshot, getPlatformStat, recordPlatformStat } from '../lib/debug-stats.js';
@@ -20,6 +25,13 @@ import { loadDebugPrefs, savePingOptIn } from '../lib/debug-prefs.js';
 import { buildPingPayload, maybeSendAnonymousPing, PING_ENDPOINT_URL } from '../lib/ping.js';
 
 const tracker = createRequestTracker();
+
+/**
+ * Monotonic epoch for SEARCH_REQUEST acceptance (BL-001 / B3).
+ * Cancel does not bump this — only a newer SEARCH_REQUEST does — so an older
+ * async run cannot reclaim fan-out after A→B→C.
+ */
+let searchEpoch = 0;
 
 /**
  * Best-effort remote pack refresh. Failures stay on the local pack and never block search.
@@ -116,6 +128,7 @@ async function reloadLabTab(tabId, tabCompleteMs) {
 /**
  * Find an existing lab tab (only after content-script reachability) or open one.
  * Discarded / frozen tabs are reloaded, never treated as ready (SC-7/SC-8).
+ * At most one `tabs.create` per call (BL-001 bound — no create storm on ping-fail).
  * @param {string} platformId
  * @param {number} tabCompleteMs
  * @returns {Promise<{ tabId: number, created: boolean }>}
@@ -124,10 +137,11 @@ async function ensurePlatformTab(platformId, tabCompleteMs = TAB_COMPLETE_MS) {
   const platform = PLATFORMS[platformId];
   if (!platform) throw new Error(`Unknown platform ${platformId}`);
 
+  let createCount = 0;
   const existing = await chrome.tabs.query({ url: platform.hostPatterns });
   const candidate = pickLabTabCandidate(existing);
   if (candidate?.id != null) {
-    let tabId = candidate.id;
+    const tabId = candidate.id;
     if (shouldReloadLabTab(candidate)) {
       await reloadLabTab(tabId, tabCompleteMs);
     }
@@ -141,6 +155,11 @@ async function ensurePlatformTab(platformId, tabCompleteMs = TAB_COMPLETE_MS) {
     }
   }
 
+  if (!canCreateLabTab(createCount)) {
+    throw new Error(`${platform.label} tab unreachable (create bound)`);
+  }
+  createCount += 1;
+
   const homeUrl = platformId === 'gemini' ? `${platform.origin}/app` : `${platform.origin}/`;
   const tab = await chrome.tabs.create({
     url: homeUrl,
@@ -152,6 +171,7 @@ async function ensurePlatformTab(platformId, tabCompleteMs = TAB_COMPLETE_MS) {
 
   await waitForTabComplete(tab.id, tabCompleteMs);
   await sleep(250);
+  // Single create only — do not open another tab if ping is still cold.
   return { tabId: tab.id, created: true };
 }
 
@@ -187,18 +207,70 @@ function waitForTabComplete(tabId, timeoutMs) {
 }
 
 /**
- * Close background tabs Cogis opened for this search.
- * @param {SearchState|undefined} state
+ * TabIds claimed by every live search except `exceptRequestId`.
+ * @param {string|null|undefined} exceptRequestId
  */
-async function maybeCloseCreatedTabs(state) {
+function protectedTabIdsExcept(exceptRequestId) {
+  return collectProtectedTabIds(searchState.entries(), exceptRequestId);
+}
+
+/**
+ * Close Cogis-created tabs for a finishing search.
+ * Closes orphans even when a newer request is active; never closes user-owned
+ * tabs or tabIds already recorded on another live search (BL-001).
+ * @param {SearchState|undefined} state
+ * @param {string} [closingRequestId]
+ */
+async function maybeCloseCreatedTabs(state, closingRequestId) {
   if (!state?.tabs) return;
-  for (const tab of state.tabs.values()) {
-    if (!shouldCloseSearchTab({ createdByUs: tab.created, tabId: tab.tabId })) continue;
+  const protectedTabIds = protectedTabIdsExcept(closingRequestId ?? null);
+  const toClose = tabIdsSafeToClose(state.tabs.values(), { protectedTabIds });
+  for (const tabId of toClose) {
     try {
-      await chrome.tabs.remove(/** @type {number} */ (tab.tabId));
+      await chrome.tabs.remove(tabId);
     } catch {
       // Tab may already be closed.
     }
+  }
+}
+
+/**
+ * Close a Cogis-created tab that a superseded ensure left behind (BL-001).
+ * Skips if a newer search already claimed the tabId.
+ * @param {{ tabId: number, created: boolean }} ensured
+ * @param {string} ensuringRequestId
+ */
+async function discardSupersededCreatedTab(ensured, ensuringRequestId) {
+  if (!ensured?.created || ensured.tabId == null) return;
+  const protectedTabIds = protectedTabIdsExcept(ensuringRequestId);
+  const ownership = resolveEnsuredTabOwnership({
+    requestStillActive: false,
+    createdByUs: true,
+    tabId: ensured.tabId,
+    protectedTabIds,
+  });
+  if (!ownership.close) return;
+  try {
+    await chrome.tabs.remove(ensured.tabId);
+  } catch {
+    // Already gone.
+  }
+}
+
+/**
+ * Cancel every in-flight search except `keepRequestId`.
+ * Uses searchState keys so popup CANCEL→REQUEST (activeId already null) still
+ * finds and cleans prior work (BL-001 / B1).
+ * @param {string} keepRequestId
+ */
+async function cancelOtherSearches(keepRequestId) {
+  const ids = requestIdsToCancelOnSupersede({
+    searchStateKeys: searchState.keys(),
+    activeRequestId: tracker.getActiveId(),
+    incomingRequestId: keepRequestId,
+  });
+  for (const id of ids) {
+    await cancelSearch(id);
   }
 }
 
@@ -406,7 +478,7 @@ async function onWallExpiry(wallRequestId) {
 
   tracker.cancel(wallRequestId);
   await abortAllContentSearches(wallRequestId, state);
-  await maybeCloseCreatedTabs(state);
+  await maybeCloseCreatedTabs(state, wallRequestId);
   searchState.delete(wallRequestId);
 }
 
@@ -415,9 +487,10 @@ async function onWallExpiry(wallRequestId) {
  */
 async function cancelSearch(requestId) {
   const state = searchState.get(requestId);
-  await abortAllContentSearches(requestId, state);
+  // Clear active id first so in-flight ensurePlatformTab sees superseded promptly.
   tracker.cancel(requestId);
-  await maybeCloseCreatedTabs(state);
+  await abortAllContentSearches(requestId, state);
+  await maybeCloseCreatedTabs(state, requestId);
   searchState.delete(requestId);
 }
 
@@ -446,14 +519,23 @@ async function runPlatform(requestId, query, platformId, state) {
     const result = await withTimeout(
       (async () => {
         const ensured = await ensurePlatformTab(platformId, TAB_COMPLETE_MS);
-        const current = searchState.get(requestId);
-        if (current) {
-          current.tabs.set(platformId, { tabId: ensured.tabId, created: ensured.created });
-        }
-        if (!tracker.isActive(requestId)) {
+        const ownership = resolveEnsuredTabOwnership({
+          requestStillActive: tracker.isActive(requestId),
+          createdByUs: ensured.created,
+          tabId: ensured.tabId,
+          protectedTabIds: protectedTabIdsExcept(requestId),
+        });
+        if (!ownership.keep) {
+          if (ownership.close) {
+            await discardSupersededCreatedTab(ensured, requestId);
+          }
           const err = new Error('aborted');
           err.name = 'AbortError';
           throw err;
+        }
+        const current = searchState.get(requestId);
+        if (current) {
+          current.tabs.set(platformId, { tabId: ensured.tabId, created: ensured.created });
         }
         // Remaining wall inside the 8s platform budget after tab ensure (I-5).
         const spent = Date.now() - platformStarted;
@@ -535,10 +617,13 @@ async function runPlatform(requestId, query, platformId, state) {
 }
 
 /**
- * @param {{ requestId: string, query: string, platforms: string[] }} request
+ * @param {{ requestId: string, query: string, platforms: string[], epoch: number }} request
  */
 async function runSearch(request) {
-  const { requestId, query } = request;
+  const { requestId, query, epoch } = request;
+  // Stale after await cancelOthers / A→B→C — do not reclaim activeId (B3).
+  if (!isSearchEpochCurrent(epoch, searchEpoch)) return;
+
   const platforms = (request.platforms?.length ? request.platforms : PLATFORM_ORDER).filter((id) =>
     IMPLEMENTED.has(id),
   );
@@ -557,6 +642,7 @@ async function runSearch(request) {
   }, OVERALL_WALL_MS);
 
   try {
+    if (!isSearchEpochCurrent(epoch, searchEpoch)) return;
     // Fan-out platforms in parallel; each has its own 8s budget; wall cancels stragglers.
     await Promise.all(
       platforms.map((platformId) => runPlatform(requestId, query, platformId, state)),
@@ -566,7 +652,7 @@ async function runSearch(request) {
     if (tracker.getActiveId() === requestId) {
       tracker.cancel(requestId);
     }
-    await maybeCloseCreatedTabs(searchState.get(requestId));
+    await maybeCloseCreatedTabs(searchState.get(requestId), requestId);
     searchState.delete(requestId);
   }
 }
@@ -606,16 +692,19 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }
 
     const requestId = message.requestId;
-    const prior = tracker.getActiveId();
-    if (prior && prior !== requestId) {
-      void cancelSearch(prior);
-    }
-
-    void runSearch({
-      requestId,
-      query,
-      platforms: message.platforms ?? PLATFORM_ORDER,
-    });
+    // Epoch + cancel-by-searchState (not activeId): popup CANCEL nulls the
+    // tracker before REQUEST arrives, so getActiveId()-only supersede is a no-op (B1).
+    const epoch = (searchEpoch += 1);
+    void (async () => {
+      await cancelOtherSearches(requestId);
+      if (!isSearchEpochCurrent(epoch, searchEpoch)) return;
+      await runSearch({
+        requestId,
+        query,
+        platforms: message.platforms ?? PLATFORM_ORDER,
+        epoch,
+      });
+    })();
 
     sendResponse({ ok: true, requestId });
     return false;
