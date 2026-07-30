@@ -13,6 +13,13 @@ import { shouldWatchdogTimeout } from '../lib/orchestration.js';
 const form = document.getElementById('cogis-search-form');
 const input = /** @type {HTMLInputElement} */ (document.getElementById('cogis-query'));
 const hint = document.getElementById('cogis-hint');
+const debugLink = /** @type {HTMLAnchorElement|null} */ (
+  document.getElementById('cogis-debug-link')
+);
+
+if (debugLink) {
+  debugLink.href = chrome.runtime.getURL('debug/panel.html');
+}
 
 /** @type {string|null} */
 let activeRequestId = null;

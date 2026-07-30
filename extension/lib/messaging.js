@@ -17,6 +17,12 @@ export const MSG = Object.freeze({
   GEMINI_SEARCH_CANCEL: 'GEMINI_SEARCH_CANCEL',
   /** Lightweight reachability probe before adopting an existing lab tab (SC-7). */
   COGIS_PING: 'COGIS_PING',
+  /** M6 debug panel: request stats + pack status + ping prefs. */
+  DEBUG_GET_SNAPSHOT: 'DEBUG_GET_SNAPSHOT',
+  /** M6 debug panel: persist anonymous-ping opt-in (default off). */
+  DEBUG_SET_PING_OPT_IN: 'DEBUG_SET_PING_OPT_IN',
+  /** M6 debug panel: opt-in anonymous selector-failure ping for one platform. */
+  DEBUG_SEND_PING: 'DEBUG_SEND_PING',
 });
 
 /** @typedef {'idle'|'loading'|'ready'|'empty'|'login_required'|'unavailable'|'timeout'} GroupStatus */
@@ -126,4 +132,27 @@ export function normalizeQuery(raw) {
   if (typeof raw !== 'string') return null;
   const trimmed = raw.trim();
   return trimmed.length >= 1 ? trimmed : null;
+}
+
+/**
+ * @param {{ pingOptIn: boolean }} input
+ */
+export function createDebugSetPingOptIn(input) {
+  return {
+    type: MSG.DEBUG_SET_PING_OPT_IN,
+    pingOptIn: input?.pingOptIn === true,
+  };
+}
+
+/**
+ * @param {{ platformId: string }} input
+ */
+export function createDebugSendPing(input) {
+  if (!input || typeof input.platformId !== 'string' || !input.platformId) {
+    throw new Error('DEBUG_SEND_PING requires platformId');
+  }
+  return {
+    type: MSG.DEBUG_SEND_PING,
+    platformId: input.platformId,
+  };
 }

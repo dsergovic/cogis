@@ -12,8 +12,8 @@ Single-purpose Chrome Manifest V3 extension that searches the user's own convers
 | M2        | Perplexity end-to-end (Library + gated Spaces)     | Merged to `dev` |
 | M3        | Claude end-to-end (Recents + Projects)             | Merged to `dev` |
 | M4        | Gemini                                             | Merged to `dev` |
-| M5        | Selector hotfix manifest (data-only)               | In progress     |
-| M6        | Debug panel + optional ping                        | Not started     |
+| M5        | Selector hotfix manifest (data-only)               | Merged to `dev` |
+| M6        | Debug panel + optional ping                        | In progress     |
 
 ## Docs
 
@@ -70,9 +70,13 @@ Popup footnote: _Some AIs do not support full-text search._
 
 Bundled `extension/lib/selectors/local-pack.json` (mirrored by `local-pack.js`) is always enough to search. On startup (and when a content script first loads its adapter), the extension may HTTPS-fetch an optional data-only hotfix from `https://cogis.ai/packs/selectors.json` in the background with a short fetch timeout. The remote document may overlay CSS selectors, wait-predicate strings, and same-host URL / relative endpoint path strings only — absolute off-host endpoints are rejected. Fetch or parse failure, timeout, and any executable-looking payload **fail closed to the local pack**; content scripts hydrate from local immediately so **search is never blocked** on the remote fetch. No `eval`, `new Function`, or remote code import. Pack version / source are exposed via `getSelectorPackStatus()` for the M6 debug panel.
 
+## Debug panel (M6)
+
+Open **Debug panel** from the popup footer (or navigate to `chrome-extension://<id>/debug/panel.html`). The panel shows per-platform last latency, hit count, last status / `errorCode`, and the active selector pack version. Optional anonymous selector-failure ping is **off by default**; when opted in, the payload is only `{ platformId, selectorPackVersion, errorClass }` (+ optional extension version). This build ships with **no ping endpoint URL** — pointing a build at a production ping endpoint is a human escalation.
+
 ## Privacy & ToS
 
-See [NOTICE](./NOTICE). No API keys. No stored auth. No message-body storage. Selector-manifest fetch carries no query text.
+See [NOTICE](./NOTICE). No API keys. No stored auth. No message-body storage. Selector-manifest fetch carries no query text. Optional M6 ping never includes query text and stays off unless opted in.
 
 ## License
 

@@ -205,6 +205,22 @@ body {
   color: var(--cogis-ink-muted);
 }
 
+.cogis-debug-foot {
+  margin: 6px 0 0;
+  font-size: 0.72rem;
+}
+
+.cogis-debug-link {
+  color: var(--cogis-ink-muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.cogis-debug-link:hover,
+.cogis-debug-link:focus-visible {
+  color: var(--cogis-accent);
+}
+
 .cogis-sr-only {
   position: absolute;
   width: 1px;

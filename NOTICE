@@ -8,6 +8,8 @@
 - Cogis does not scrape, index, store, or redistribute conversation message bodies.
 - Nothing is cached between searches; each query re-hits the lab.
 - Optional selector-manifest fetch from `cogis.ai` (M5) carries no query text — only a data-only JSON pack of selectors / URL patterns.
+- Optional maintainer anonymous ping (M6) is **off by default** and opt-in. When enabled, the payload may include only platform id, selector pack version, error class / code, and optionally the extension version — **never** query text, titles, cookies, or message bodies. This build does not point at a production ping endpoint; enabling one is a human escalation.
+- The M6 debug panel shows per-platform latency, hit counts, last status, and selector pack version only. It does not display or store message bodies or query text. Tiny `chrome.storage.local` prefs hold the ping opt-in flag only.
 
 ## ToS posture
 

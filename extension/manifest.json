@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Cogis — AI Search",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Search your own ChatGPT, Perplexity, Claude, and Gemini conversation history from a single popup and open deep links. Dev-unpacked V1.",
   "action": {
     "default_title": "Cogis — AI Search",
@@ -21,6 +21,7 @@
     "48": "assets/icons/icon-48.png",
     "128": "assets/icons/icon-128.png"
   },
+  "permissions": ["storage"],
   "host_permissions": [
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",
