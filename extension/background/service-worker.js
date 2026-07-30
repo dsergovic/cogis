@@ -8,8 +8,10 @@ import {
   withTimeout,
 } from '../lib/timeouts.js';
 import {
+  canCreateLabTab,
   pendingTerminalPlatforms,
   pickLabTabCandidate,
+  resolveEnsuredTabOwnership,
   resolveWallExpiry,
   shouldCloseSearchTab,
   shouldReloadLabTab,
@@ -116,6 +118,7 @@ async function reloadLabTab(tabId, tabCompleteMs) {
 /**
  * Find an existing lab tab (only after content-script reachability) or open one.
  * Discarded / frozen tabs are reloaded, never treated as ready (SC-7/SC-8).
+ * At most one `tabs.create` per call (BL-001 bound — no create storm on ping-fail).
  * @param {string} platformId
  * @param {number} tabCompleteMs
  * @returns {Promise<{ tabId: number, created: boolean }>}
@@ -124,10 +127,11 @@ async function ensurePlatformTab(platformId, tabCompleteMs = TAB_COMPLETE_MS) {
   const platform = PLATFORMS[platformId];
   if (!platform) throw new Error(`Unknown platform ${platformId}`);
 
+  let createCount = 0;
   const existing = await chrome.tabs.query({ url: platform.hostPatterns });
   const candidate = pickLabTabCandidate(existing);
   if (candidate?.id != null) {
-    let tabId = candidate.id;
+    const tabId = candidate.id;
     if (shouldReloadLabTab(candidate)) {
       await reloadLabTab(tabId, tabCompleteMs);
     }
@@ -141,6 +145,11 @@ async function ensurePlatformTab(platformId, tabCompleteMs = TAB_COMPLETE_MS) {
     }
   }
 
+  if (!canCreateLabTab(createCount)) {
+    throw new Error(`${platform.label} tab unreachable (create bound)`);
+  }
+  createCount += 1;
+
   const homeUrl = platformId === 'gemini' ? `${platform.origin}/app` : `${platform.origin}/`;
   const tab = await chrome.tabs.create({
     url: homeUrl,
@@ -152,6 +161,7 @@ async function ensurePlatformTab(platformId, tabCompleteMs = TAB_COMPLETE_MS) {
 
   await waitForTabComplete(tab.id, tabCompleteMs);
   await sleep(250);
+  // Single create only — do not open another tab if ping is still cold.
   return { tabId: tab.id, created: true };
 }
 
@@ -188,17 +198,42 @@ function waitForTabComplete(tabId, timeoutMs) {
 
 /**
  * Close background tabs Cogis opened for this search.
+ * Skips user-owned tabs and skips remove while a newer requestId is active (BL-001).
  * @param {SearchState|undefined} state
+ * @param {string} [closingRequestId]
  */
-async function maybeCloseCreatedTabs(state) {
+async function maybeCloseCreatedTabs(state, closingRequestId) {
   if (!state?.tabs) return;
+  const activeRequestId = tracker.getActiveId();
   for (const tab of state.tabs.values()) {
-    if (!shouldCloseSearchTab({ createdByUs: tab.created, tabId: tab.tabId })) continue;
+    if (
+      !shouldCloseSearchTab({
+        createdByUs: tab.created,
+        tabId: tab.tabId,
+        activeRequestId,
+        closingRequestId: closingRequestId ?? null,
+      })
+    ) {
+      continue;
+    }
     try {
       await chrome.tabs.remove(/** @type {number} */ (tab.tabId));
     } catch {
       // Tab may already be closed.
     }
+  }
+}
+
+/**
+ * Close a Cogis-created tab that a superseded ensure left behind (BL-001).
+ * @param {{ tabId: number, created: boolean }} ensured
+ */
+async function discardSupersededCreatedTab(ensured) {
+  if (!ensured?.created || ensured.tabId == null) return;
+  try {
+    await chrome.tabs.remove(ensured.tabId);
+  } catch {
+    // Already gone.
   }
 }
 
@@ -406,7 +441,7 @@ async function onWallExpiry(wallRequestId) {
 
   tracker.cancel(wallRequestId);
   await abortAllContentSearches(wallRequestId, state);
-  await maybeCloseCreatedTabs(state);
+  await maybeCloseCreatedTabs(state, wallRequestId);
   searchState.delete(wallRequestId);
 }
 
@@ -415,9 +450,10 @@ async function onWallExpiry(wallRequestId) {
  */
 async function cancelSearch(requestId) {
   const state = searchState.get(requestId);
-  await abortAllContentSearches(requestId, state);
+  // Clear active id first so in-flight ensurePlatformTab sees superseded promptly.
   tracker.cancel(requestId);
-  await maybeCloseCreatedTabs(state);
+  await abortAllContentSearches(requestId, state);
+  await maybeCloseCreatedTabs(state, requestId);
   searchState.delete(requestId);
 }
 
@@ -446,14 +482,22 @@ async function runPlatform(requestId, query, platformId, state) {
     const result = await withTimeout(
       (async () => {
         const ensured = await ensurePlatformTab(platformId, TAB_COMPLETE_MS);
-        const current = searchState.get(requestId);
-        if (current) {
-          current.tabs.set(platformId, { tabId: ensured.tabId, created: ensured.created });
-        }
-        if (!tracker.isActive(requestId)) {
+        const ownership = resolveEnsuredTabOwnership({
+          requestStillActive: tracker.isActive(requestId),
+          createdByUs: ensured.created,
+          tabId: ensured.tabId,
+        });
+        if (!ownership.keep) {
+          if (ownership.close) {
+            await discardSupersededCreatedTab(ensured);
+          }
           const err = new Error('aborted');
           err.name = 'AbortError';
           throw err;
+        }
+        const current = searchState.get(requestId);
+        if (current) {
+          current.tabs.set(platformId, { tabId: ensured.tabId, created: ensured.created });
         }
         // Remaining wall inside the 8s platform budget after tab ensure (I-5).
         const spent = Date.now() - platformStarted;
@@ -566,7 +610,7 @@ async function runSearch(request) {
     if (tracker.getActiveId() === requestId) {
       tracker.cancel(requestId);
     }
-    await maybeCloseCreatedTabs(searchState.get(requestId));
+    await maybeCloseCreatedTabs(searchState.get(requestId), requestId);
     searchState.delete(requestId);
   }
 }
@@ -606,16 +650,19 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }
 
     const requestId = message.requestId;
-    const prior = tracker.getActiveId();
-    if (prior && prior !== requestId) {
-      void cancelSearch(prior);
-    }
-
-    void runSearch({
-      requestId,
-      query,
-      platforms: message.platforms ?? PLATFORM_ORDER,
-    });
+    // Await prior cancel before fan-out so Cogis-created tabs are closed (or
+    // skipped under a newer active id) instead of piling up (BL-001).
+    void (async () => {
+      const prior = tracker.getActiveId();
+      if (prior && prior !== requestId) {
+        await cancelSearch(prior);
+      }
+      await runSearch({
+        requestId,
+        query,
+        platforms: message.platforms ?? PLATFORM_ORDER,
+      });
+    })();
 
     sendResponse({ ok: true, requestId });
     return false;

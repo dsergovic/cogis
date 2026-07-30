@@ -45,12 +45,81 @@ export function shouldWatchdogTimeout(input) {
   );
 }
 
+/** Max `tabs.create` calls allowed inside one `ensurePlatformTab` (BL-001). */
+export const MAX_ENSURE_TAB_CREATES = 1;
+
 /**
  * Only close lab tabs Cogis opened for search — never user-owned tabs.
- * @param {{ createdByUs: boolean, tabId: number|null|undefined }} input
+ * When a newer requestId is already active, skip remove so we do not yank a
+ * tab the superseding search may have adopted (BL-001 / SC-9).
+ *
+ * @param {{
+ *   createdByUs: boolean,
+ *   tabId: number|null|undefined,
+ *   activeRequestId?: string|null,
+ *   closingRequestId?: string|null,
+ * }} input
  */
 export function shouldCloseSearchTab(input) {
-  return Boolean(input.createdByUs && input.tabId != null);
+  if (!input.createdByUs || input.tabId == null) return false;
+  const { activeRequestId, closingRequestId } = input;
+  if (activeRequestId != null && closingRequestId != null && activeRequestId !== closingRequestId) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Whether ensurePlatformTab may call tabs.create (bounded — BL-001).
+ * @param {number} createCount
+ */
+export function canCreateLabTab(createCount) {
+  return createCount < MAX_ENSURE_TAB_CREATES;
+}
+
+/**
+ * After ensurePlatformTab returns: keep for an active request, or discard a
+ * Cogis-created tab when the request was superseded mid-ensure (BL-001 litter).
+ * Never closes user-owned tabs (`createdByUs: false`).
+ *
+ * @param {{
+ *   requestStillActive: boolean,
+ *   createdByUs: boolean,
+ *   tabId: number|null|undefined,
+ * }} input
+ * @returns {{ keep: boolean, close: boolean }}
+ */
+export function resolveEnsuredTabOwnership(input) {
+  if (input.requestStillActive) {
+    return { keep: true, close: false };
+  }
+  if (input.createdByUs && input.tabId != null) {
+    return { keep: false, close: true };
+  }
+  return { keep: false, close: false };
+}
+
+/**
+ * Tab ids a finishing request may close under BL-001 rules.
+ * @param {Iterable<{ created: boolean, tabId: number|null|undefined }>} tabs
+ * @param {{ activeRequestId?: string|null, closingRequestId?: string|null }} ctx
+ * @returns {number[]}
+ */
+export function tabIdsSafeToClose(tabs, ctx = {}) {
+  const ids = [];
+  for (const tab of tabs) {
+    if (
+      shouldCloseSearchTab({
+        createdByUs: tab.created,
+        tabId: tab.tabId,
+        activeRequestId: ctx.activeRequestId,
+        closingRequestId: ctx.closingRequestId,
+      })
+    ) {
+      ids.push(/** @type {number} */ (tab.tabId));
+    }
+  }
+  return ids;
 }
 
 /**

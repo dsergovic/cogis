@@ -9,6 +9,7 @@ import { PLATFORMS, PLATFORM_ORDER, loginRequiredCopy, unavailableCopy } from '.
 import { resolveResultHref } from '../lib/results.js';
 import { POPUP_WATCHDOG_MS } from '../lib/timeouts.js';
 import { shouldWatchdogTimeout } from '../lib/orchestration.js';
+import { groupClassName, nextCollapsedState } from '../lib/popup-collapse.js';
 
 const form = document.getElementById('cogis-search-form');
 const input = /** @type {HTMLInputElement} */ (document.getElementById('cogis-query'));
@@ -81,6 +82,37 @@ function armWatchdog(requestId, platformId) {
 }
 
 /**
+ * @param {Element} group
+ * @returns {boolean}
+ */
+function isGroupCollapsed(group) {
+  return group.getAttribute('data-cogis-collapsed') === 'true';
+}
+
+/**
+ * Session-only collapse (BL-020) — DOM dataset only; no persistent prefs.
+ * @param {Element} group
+ * @param {boolean} collapsed
+ */
+function applyGroupCollapsed(group, collapsed) {
+  const platformId = group.getAttribute('data-cogis-platform') ?? 'platform';
+  const label = PLATFORMS[platformId]?.label ?? platformId;
+  group.setAttribute('data-cogis-collapsed', collapsed ? 'true' : 'false');
+  const status = group.getAttribute('data-cogis-status') ?? 'idle';
+  group.className = groupClassName(status, collapsed);
+
+  const btn = group.querySelector('[data-cogis-collapse]');
+  if (btn) {
+    btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    btn.setAttribute('title', collapsed ? `Expand ${label}` : `Collapse ${label}`);
+    const sr = btn.querySelector('.cogis-sr-only');
+    if (sr) {
+      sr.textContent = collapsed ? `Expand ${label} results` : `Collapse ${label} results`;
+    }
+  }
+}
+
+/**
  * @param {string} platformId
  * @param {string} status
  * @param {{ message?: string, loginUrl?: string, results?: import('../lib/messaging.js').PointerRecord[] }} [opts]
@@ -90,7 +122,7 @@ function setGroupState(platformId, status, opts = {}) {
   if (!el) return;
 
   el.dataset.cogisStatus = status;
-  el.className = `cogis-group cogis-group--${status}`;
+  el.className = groupClassName(status, isGroupCollapsed(el));
 
   const statusText = el.querySelector('[data-cogis-status-text]');
   const list = el.querySelector('[data-cogis-list]');
@@ -251,6 +283,15 @@ function submitSearch(rawQuery) {
 form?.addEventListener('submit', (event) => {
   event.preventDefault();
   submitSearch(input?.value ?? '');
+});
+
+document.getElementById('cogis-results')?.addEventListener('click', (event) => {
+  const target = /** @type {HTMLElement} */ (event.target);
+  const btn = target.closest?.('[data-cogis-collapse]');
+  if (!btn) return;
+  const group = btn.closest?.('[data-cogis-platform]');
+  if (!group) return;
+  applyGroupCollapsed(group, nextCollapsedState(isGroupCollapsed(group)));
 });
 
 // No live-as-you-type search — only Enter / Search button via form submit.

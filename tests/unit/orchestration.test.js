@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import {
   resolveWallExpiry,
   pendingTerminalPlatforms,
@@ -6,6 +7,10 @@ import {
   shouldCloseSearchTab,
   shouldReloadLabTab,
   pickLabTabCandidate,
+  canCreateLabTab,
+  MAX_ENSURE_TAB_CREATES,
+  resolveEnsuredTabOwnership,
+  tabIdsSafeToClose,
 } from '../../extension/lib/orchestration.js';
 import {
   PLATFORM_TIMEOUT_MS,
@@ -98,10 +103,104 @@ describe('withTimeout platform envelope', () => {
 });
 
 describe('shouldCloseSearchTab', () => {
-  it('only closes tabs Cogis created', () => {
+  it('only closes tabs Cogis created — never user-owned (created:false)', () => {
     expect(shouldCloseSearchTab({ createdByUs: true, tabId: 3 })).toBe(true);
     expect(shouldCloseSearchTab({ createdByUs: false, tabId: 3 })).toBe(false);
     expect(shouldCloseSearchTab({ createdByUs: true, tabId: null })).toBe(false);
+  });
+
+  it('skips tabs.remove while a newer requestId is active (BL-001)', () => {
+    expect(
+      shouldCloseSearchTab({
+        createdByUs: true,
+        tabId: 7,
+        activeRequestId: 'req-b',
+        closingRequestId: 'req-a',
+      }),
+    ).toBe(false);
+    expect(
+      shouldCloseSearchTab({
+        createdByUs: true,
+        tabId: 7,
+        activeRequestId: 'req-a',
+        closingRequestId: 'req-a',
+      }),
+    ).toBe(true);
+    expect(
+      shouldCloseSearchTab({
+        createdByUs: true,
+        tabId: 7,
+        activeRequestId: null,
+        closingRequestId: 'req-a',
+      }),
+    ).toBe(true);
+  });
+});
+
+describe('superseding-search tab lifecycle (BL-001)', () => {
+  it('bounds ensurePlatformTab creates to one per call', () => {
+    expect(MAX_ENSURE_TAB_CREATES).toBe(1);
+    expect(canCreateLabTab(0)).toBe(true);
+    expect(canCreateLabTab(1)).toBe(false);
+    expect(canCreateLabTab(2)).toBe(false);
+  });
+
+  it('discards Cogis-created tabs when ensure finishes after supersede', () => {
+    expect(
+      resolveEnsuredTabOwnership({
+        requestStillActive: false,
+        createdByUs: true,
+        tabId: 11,
+      }),
+    ).toEqual({ keep: false, close: true });
+  });
+
+  it('never closes user-owned tabs after supersede', () => {
+    expect(
+      resolveEnsuredTabOwnership({
+        requestStillActive: false,
+        createdByUs: false,
+        tabId: 11,
+      }),
+    ).toEqual({ keep: false, close: false });
+  });
+
+  it('keeps tabs for the still-active request', () => {
+    expect(
+      resolveEnsuredTabOwnership({
+        requestStillActive: true,
+        createdByUs: true,
+        tabId: 11,
+      }),
+    ).toEqual({ keep: true, close: false });
+  });
+
+  it('lists only safe-to-close tab ids for a finishing request', () => {
+    const tabs = [
+      { created: true, tabId: 1 },
+      { created: false, tabId: 2 },
+      { created: true, tabId: 3 },
+      { created: true, tabId: null },
+    ];
+    expect(tabIdsSafeToClose(tabs, { activeRequestId: 'b', closingRequestId: 'a' })).toEqual([]);
+    expect(tabIdsSafeToClose(tabs, { activeRequestId: null, closingRequestId: 'a' })).toEqual([
+      1, 3,
+    ]);
+    expect(tabIdsSafeToClose(tabs, { activeRequestId: 'a', closingRequestId: 'a' })).toEqual([
+      1, 3,
+    ]);
+  });
+
+  it('service worker awaits prior cancel before fan-out and discards superseded creates', () => {
+    const sw = readFileSync(
+      new URL('../../extension/background/service-worker.js', import.meta.url),
+      'utf8',
+    );
+    expect(sw).toContain('await cancelSearch(prior)');
+    expect(sw).toContain('resolveEnsuredTabOwnership');
+    expect(sw).toContain('discardSupersededCreatedTab');
+    expect(sw).toContain('canCreateLabTab');
+    expect(sw).toMatch(/created:\s*false/);
   });
 });
 
