@@ -19,9 +19,9 @@ function warResourcesForHosts(manifest, hostGlobs) {
 }
 
 describe('web_accessible_resources coverage for content-script imports', () => {
-  it('lists WAR entries matching chatgpt and perplexity hosts', () => {
+  it('lists WAR entries matching chatgpt, perplexity, and claude hosts', () => {
     const manifest = JSON.parse(readFileSync(join(extensionRoot, 'manifest.json'), 'utf8'));
-    expect(manifest.web_accessible_resources?.length).toBeGreaterThanOrEqual(2);
+    expect(manifest.web_accessible_resources?.length).toBeGreaterThanOrEqual(3);
 
     const chatgptWar = warResourcesForHosts(manifest, [
       'https://chatgpt.com/*',
@@ -34,6 +34,9 @@ describe('web_accessible_resources coverage for content-script imports', () => {
       'https://perplexity.ai/*',
     ]);
     expect(perplexityWar.length).toBeGreaterThan(0);
+
+    const claudeWar = warResourcesForHosts(manifest, ['https://claude.ai/*']);
+    expect(claudeWar.length).toBeGreaterThan(0);
   });
 
   it('covers every chrome.runtime.getURL target used by chatgpt content script', () => {
@@ -64,6 +67,17 @@ describe('web_accessible_resources coverage for content-script imports', () => {
     }
   });
 
+  it('covers every chrome.runtime.getURL target used by claude content script', () => {
+    const manifest = JSON.parse(readFileSync(join(extensionRoot, 'manifest.json'), 'utf8'));
+    const warResources = warResourcesForHosts(manifest, ['https://claude.ai/*']);
+    const cs = readFileSync(join(extensionRoot, 'content/claude.js'), 'utf8');
+    const getUrlPaths = extractGetUrlResources(cs);
+    expect(getUrlPaths.length).toBeGreaterThan(0);
+    for (const path of getUrlPaths) {
+      expect(warCovers(warResources, path), `WAR missing getURL target: ${path}`).toBe(true);
+    }
+  });
+
   it('covers the full static import graph of the chatgpt adapter entry', () => {
     const manifest = JSON.parse(readFileSync(join(extensionRoot, 'manifest.json'), 'utf8'));
     const warResources = warResourcesForHosts(manifest, [
@@ -87,6 +101,18 @@ describe('web_accessible_resources coverage for content-script imports', () => {
     ]);
     const graph = collectImportGraph(extensionRoot, 'lib/perplexity-adapter.js');
     expect(graph).toContain('lib/perplexity-adapter.js');
+    expect(graph).toContain('lib/selectors/loader.js');
+    expect(graph).toContain('lib/selectors/local-pack.js');
+    for (const path of graph) {
+      expect(warCovers(warResources, path), `WAR missing graph module: ${path}`).toBe(true);
+    }
+  });
+
+  it('covers the full static import graph of the claude adapter entry', () => {
+    const manifest = JSON.parse(readFileSync(join(extensionRoot, 'manifest.json'), 'utf8'));
+    const warResources = warResourcesForHosts(manifest, ['https://claude.ai/*']);
+    const graph = collectImportGraph(extensionRoot, 'lib/claude-adapter.js');
+    expect(graph).toContain('lib/claude-adapter.js');
     expect(graph).toContain('lib/selectors/loader.js');
     expect(graph).toContain('lib/selectors/local-pack.js');
     for (const path of graph) {

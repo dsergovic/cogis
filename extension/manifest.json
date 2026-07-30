@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Cogis — AI Search",
-  "version": "0.2.0",
-  "description": "Search your own ChatGPT and Perplexity conversation history from a single popup and open deep links. Dev-unpacked V1.",
+  "version": "0.3.0",
+  "description": "Search your own ChatGPT, Perplexity, and Claude conversation history from a single popup and open deep links. Dev-unpacked V1.",
   "action": {
     "default_title": "Cogis — AI Search",
     "default_popup": "popup/popup.html",
@@ -25,7 +25,8 @@
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",
     "https://www.perplexity.ai/*",
-    "https://perplexity.ai/*"
+    "https://perplexity.ai/*",
+    "https://claude.ai/*"
   ],
   "content_scripts": [
     {
@@ -36,6 +37,11 @@
     {
       "matches": ["https://www.perplexity.ai/*", "https://perplexity.ai/*"],
       "js": ["content/perplexity.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://claude.ai/*"],
+      "js": ["content/claude.js"],
       "run_at": "document_idle"
     }
   ],
@@ -61,6 +67,17 @@
         "lib/selectors/local-pack.js"
       ],
       "matches": ["https://www.perplexity.ai/*", "https://perplexity.ai/*"]
+    },
+    {
+      "resources": [
+        "lib/claude-adapter.js",
+        "lib/results.js",
+        "lib/platforms.js",
+        "lib/timeouts.js",
+        "lib/selectors/loader.js",
+        "lib/selectors/local-pack.js"
+      ],
+      "matches": ["https://claude.ai/*"]
     }
   ]
 }

@@ -1,42 +1,46 @@
 /**
- * Classic (non-module) Perplexity content script.
+ * Classic (non-module) Claude content script.
  * Keeps the static content_scripts entry classic (no top-level import), then
  * dynamically imports the shared ES adapter — single owner for search/normalize/
  * pack wiring under extension/lib/.
  *
  * Those modules must be listed in manifest web_accessible_resources (MV3).
+ *
+ * Search is endpoint-only (S2 preferred path). DOM Recents/search fallback is
+ * deferred (BL-023) pending human choice; DOM is used for login-shell auth
+ * signals only — consistent with M1/M2 endpoint-only precedent.
  */
 (function () {
   'use strict';
 
   const MSG = {
-    PERPLEXITY_SEARCH: 'PERPLEXITY_SEARCH',
-    PERPLEXITY_SEARCH_RESULT: 'PERPLEXITY_SEARCH_RESULT',
-    PERPLEXITY_SEARCH_CANCEL: 'PERPLEXITY_SEARCH_CANCEL',
+    CLAUDE_SEARCH: 'CLAUDE_SEARCH',
+    CLAUDE_SEARCH_RESULT: 'CLAUDE_SEARCH_RESULT',
+    CLAUDE_SEARCH_CANCEL: 'CLAUDE_SEARCH_CANCEL',
   };
 
-  const DEFAULT_SIGN_IN_SEL =
-    'a[href*="/signin"], button[aria-label*="Sign in" i], a[aria-label*="Sign in" i]';
-  const DEFAULT_LOGIN_URL = 'https://www.perplexity.ai/';
+  const DEFAULT_LOGIN_SHELL_SEL =
+    'a[href*="/login"], button[aria-label*="Continue with Google" i], a[aria-label*="Continue with Google" i], button[aria-label*="Continue with email" i]';
+  const DEFAULT_LOGIN_URL = 'https://claude.ai/login';
 
   /** @type {Map<string, AbortController>} */
   const controllers = new Map();
 
   /** @type {Promise<any>|null} */
   let adapterPromise = null;
-  let signInSel = DEFAULT_SIGN_IN_SEL;
+  let loginShellSel = DEFAULT_LOGIN_SHELL_SEL;
   let loginUrl = DEFAULT_LOGIN_URL;
 
   function loadAdapter() {
     if (!adapterPromise) {
-      adapterPromise = import(chrome.runtime.getURL('lib/perplexity-adapter.js'))
+      adapterPromise = import(chrome.runtime.getURL('lib/claude-adapter.js'))
         .then(function (adapterMod) {
           return import(chrome.runtime.getURL('lib/selectors/loader.js')).then(
             function (loaderMod) {
               try {
-                const pack = loaderMod.getPlatformSelectors('perplexity');
-                if (pack && pack.selectors && pack.selectors.signIn) {
-                  signInSel = pack.selectors.signIn;
+                const pack = loaderMod.getPlatformSelectors('claude');
+                if (pack && pack.selectors && pack.selectors.loginShell) {
+                  loginShellSel = pack.selectors.loginShell;
                 }
                 if (pack && pack.loginUrl) {
                   loginUrl = pack.loginUrl;
@@ -66,9 +70,11 @@
     }
   }
 
-  function isSignInVisible() {
+  function isLoginShell() {
     try {
-      const nodes = document.querySelectorAll(signInSel);
+      const path = String(location.pathname || '');
+      if (path.indexOf('/login') !== -1) return true;
+      const nodes = document.querySelectorAll(loginShellSel);
       for (let i = 0; i < nodes.length; i += 1) {
         if (isVisible(nodes[i])) return true;
       }
@@ -111,21 +117,20 @@
 
     try {
       const adapterMod = await loadAdapter();
-      const origin =
-        location.origin.indexOf('http') === 0 ? location.origin : 'https://www.perplexity.ai';
-      const outcome = await adapterMod.searchPerplexity({
+      const origin = location.origin.indexOf('http') === 0 ? location.origin : 'https://claude.ai';
+      const outcome = await adapterMod.searchClaude({
         query: query,
         origin: origin,
         fetchImpl: fetch.bind(globalThis),
-        isSignInVisible: isSignInVisible,
+        isLoginShell: isLoginShell,
         signal: ac.signal,
         platformBudgetMs:
           typeof message.platformBudgetMs === 'number' ? message.platformBudgetMs : undefined,
       });
       return {
-        type: MSG.PERPLEXITY_SEARCH_RESULT,
+        type: MSG.CLAUDE_SEARCH_RESULT,
         requestId: requestId,
-        platform: 'perplexity',
+        platform: 'claude',
         capability: outcome.capability || 'title-match',
         status: outcome.status,
         results: outcome.results || [],
@@ -136,23 +141,23 @@
     } catch (err) {
       if (isAbortError(err)) {
         return {
-          type: MSG.PERPLEXITY_SEARCH_RESULT,
+          type: MSG.CLAUDE_SEARCH_RESULT,
           requestId: requestId,
-          platform: 'perplexity',
+          platform: 'claude',
           status: 'unavailable',
           results: [],
           errorCode: 'aborted',
-          message: 'Perplexity is temporarily unavailable.',
+          message: 'Claude is temporarily unavailable.',
         };
       }
       return {
-        type: MSG.PERPLEXITY_SEARCH_RESULT,
+        type: MSG.CLAUDE_SEARCH_RESULT,
         requestId: requestId,
-        platform: 'perplexity',
+        platform: 'claude',
         status: 'unavailable',
         results: [],
         errorCode: isImportError(err) ? 'adapter_import_failed' : 'content_exception',
-        message: 'Perplexity is temporarily unavailable.',
+        message: 'Claude is temporarily unavailable.',
       };
     } finally {
       controllers.delete(requestId);
@@ -162,13 +167,13 @@
   chrome.runtime.onMessage.addListener(function (message, _sender, sendResponse) {
     if (!message || typeof message.type !== 'string') return false;
 
-    if (message.type === MSG.PERPLEXITY_SEARCH_CANCEL) {
+    if (message.type === MSG.CLAUDE_SEARCH_CANCEL) {
       abortRequest(message.requestId);
       sendResponse({ ok: true });
       return false;
     }
 
-    if (message.type !== MSG.PERPLEXITY_SEARCH) return false;
+    if (message.type !== MSG.CLAUDE_SEARCH) return false;
 
     handleSearch(message).then(sendResponse);
     return true;
