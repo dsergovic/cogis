@@ -19,7 +19,9 @@
 body {
   margin: 0;
   width: 380px;
-  min-height: 420px;
+  height: 520px;
+  max-height: 600px;
+  overflow: hidden;
   font-family: var(--cogis-font);
   color: var(--cogis-ink);
   background:
@@ -30,9 +32,11 @@ body {
 .cogis-shell {
   display: flex;
   flex-direction: column;
-  min-height: 420px;
+  height: 100%;
+  min-height: 0;
   padding: 14px 14px 10px;
   gap: 10px;
+  overflow: hidden;
 }
 
 .cogis-header {
@@ -90,11 +94,15 @@ body {
 }
 
 .cogis-results {
-  flex: 1;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  min-height: 260px;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
 }
 
 .cogis-group {
@@ -245,8 +253,15 @@ body {
 }
 
 .cogis-footer {
-  margin-top: auto;
-  padding-top: 4px;
+  flex: 0 0 auto;
+  margin-top: 0;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--cogis-line) 70%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--cogis-bg) 30%, transparent) 0%,
+    var(--cogis-bg) 40%
+  );
 }
 
 .cogis-footnote {
