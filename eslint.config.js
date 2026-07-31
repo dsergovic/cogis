@@ -3,12 +3,7 @@ import prettier from 'eslint-config-prettier';
 
 export default [
   {
-    ignores: [
-      'node_modules/**',
-      'package-lock.json',
-      // S8.1 throwaway spike — deleted after spike closes.
-      'spike-ext/**',
-    ],
+    ignores: ['node_modules/**', 'package-lock.json'],
   },
   js.configs.recommended,
   prettier,

@@ -38,4 +38,4 @@ The [formal finding](./s8-1-postmessage-handshake-contract.md) calls each of the
 - **`sender.tab.url` origin check on the SW side** — the spike SW trusted the bridge. M8a must add this as a second origin check independent of the bridge, defense in depth.
 - **`bad_platforms`, `event.origin === "null"`, `https://www.cogis.ai`** — untested but expected to follow the same validation-ordering pattern already established; noted for M8a integration tests, not blocking for the contract.
 - **WAR-guard test extension** — the spike bridge was flat single-file with no dynamic imports. M8a's WAR-guard extension is a Tier 1 concern separate from the postMessage contract.
-- **Harness teardown** — `spike-ext/` and `web/spike/` are deliberately retained during M8a implementation for use as a debug tool. Teardown PR must land before M8a's PR to `main`.
+- **Harness teardown** — `spike-ext/` and `web/spike/` were deliberately retained during M8a implementation for use as a debug tool, then deleted by PR #34, well ahead of any promotion to `main`.

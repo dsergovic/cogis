@@ -6,5 +6,3 @@ docs/
 AGENTS.md
 LICENSE
 pr-comments.json
-# S8.1 throwaway spike — do not gate CI on this; deleted after spike closes.
-spike-ext/

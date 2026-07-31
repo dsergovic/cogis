@@ -713,8 +713,8 @@ finding doc at `s8-1-postmessage-handshake-contract.md`.)_
 
 - Formal finding: [`s8-1-postmessage-handshake-contract.md`](./s8-1-postmessage-handshake-contract.md)
 - Addendum §3.9 (bridge protocol contract): [`../agent_blueprint-m8-web-surface.md`](../agent_blueprint-m8-web-surface.md)
-- Harness bridge source: [`../../spike-ext/content/web-bridge.js`](../../spike-ext/content/web-bridge.js)
-- Harness page source: [`../../web/spike/s8-1.html`](../../web/spike/s8-1.html)
+- Harness bridge source: `spike-ext/content/web-bridge.js` — deleted by PR #34 after M8a landed; recoverable from git history.
+- Harness page source: `web/spike/s8-1.html` — deleted by PR #34 after M8a landed; recoverable from git history.
 - Related PRs:
   - PR #27 — spike harness landed
   - PR #28 — bridge self-echo fix + CSP cleanup
