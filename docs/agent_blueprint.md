@@ -6,6 +6,7 @@
 **License:** MIT  
 **Framework:** [Full-Lifecycle Agentic Software Engineering v1.1.0](https://github.com/dsergovic/research/blob/main/docs/Full-Lifecycle%20Agentic%20Software%20Engineering.md)  
 **Phase 0 input:** [`docs/cogis-ai-search-pre-blueprint.md`](./cogis-ai-search-pre-blueprint.md) **v0.2.0** (locked; do not re-litigate)  
+**M8 addendum:** [`docs/agent_blueprint-m8-web-surface.md`](./agent_blueprint-m8-web-surface.md) **v0.1.0** — authorizes the M8 web search surface at `cogis.ai/`. Parent blueprint §§3, 6, 8, 9, 10, 12, 14 are pending a future `v0.4.0` reconciliation; until then, the addendum is the source of truth for M8.  
 **Status:** Phase 1 blueprint — spikes S1–S6 resolved; ready for Phase 2 hand-off  
 **Version:** 0.3.0  
 **Integration branch:** `dev` (day-to-day working area; feature PRs target `dev`)  
