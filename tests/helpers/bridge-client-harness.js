@@ -6,8 +6,6 @@ import { runInNewContext } from 'node:vm';
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
 
 export const CLIENT_PATH = join(root, 'web/assets/js/bridge-client.js');
-export const HARNESS_PAGE_PATH = join(root, 'web/spike/s8-2.html');
-export const HARNESS_SCRIPT_PATH = join(root, 'web/spike/s8-2.js');
 
 export function readClientSource() {
   return readFileSync(CLIENT_PATH, 'utf8');
