@@ -5,7 +5,7 @@ Pick up during polish, the next natural milestone, or a short fix branch.
 Do **not** treat this file as agent context unless the operator attaches it.
 
 **Integration branch:** `dev`  
-**Last updated:** 2026-07-31
+**Last updated:** 2026-07-31 (PR #36 close-out)
 
 ---
 
@@ -49,6 +49,14 @@ Add new rows at the top of the relevant section. Prefer one line + link to PR/is
 | BL-026 | open | **M4 Gemini multi-account / chooser** | S4 residual #3: Google account chooser may confuse which session a background tab uses. Documented limitation; optional future: prefer active Gemini tab’s account chip over opening a new tab. |
 | BL-027 | open | **M4 Gemini deep-link fragility** | S4 residual #2: occasional `/app/{id}` breakage after Google-side changes. Cascade already falls back to `https://gemini.google.com/app`. Re-verify in operator smoke; no fake deep links. |
 
+## S8.2 close-out follow-ups (from PR #36 review)
+
+| ID | Status | Item | Notes |
+| --- | --- | --- | --- |
+| BL-030 | open | **`docs/spikes/README.md` S8.1 row stale** | S8.1 row still reads "Open — stub only"; the spike is CLOSED (see `docs/spikes/s8-1-postmessage-handshake-contract.md` and `docs/case-studies/s8-1-case-study.md`). Left untouched in PR #36 as out of scope. Two-line sync — a browsing inconvenience, not a factual conflict, since the spike file itself is authoritative. |
+| BL-031 | open | **Promote R2 to a spike stub (post-M8e)** | S8.2 R2 (`docs/spikes/s8-2-install-gate-latency.md` §Residual risks): extension update/reload leaves a transient no-handshake window on already-open `cogis.ai` tabs. The re-emit cadence does **not** help — re-emitting into a tab with no listener is still nothing. Not measured; not a blocker for M8b/M8c/M8d. Worth an explicit stub (`docs/spikes/s8-4-update-window-gap.md` or similar) before M8e / Web Store publish, when auto-update lands in the wild. Cost is one stale tab showing an install-gate until reloaded. |
+| BL-032 | open | **Delete `github-pages` deployment branch rule for `spike/s8-2-install-gate-latency`** | Rule added to the `github-pages` environment on 2026-07-31 so `workflow_dispatch` from the spike branch could publish the harness to `cogis.ai/spike/s8-2.html` for measurement. Merging PR #36 restores the `dev`-only publish posture in the workflow; the environment rule should be removed to match. Safety cleanup, no functional impact until someone next dispatches from an unmerged branch. |
+
 ## Cross-cutting / later milestones
 
 | ID | Status | Item | Notes |
@@ -78,3 +86,4 @@ Add new rows at the top of the relevant section. Prefer one line + link to PR/is
 | 2026-07-29 | BL-024 Claude soft page-ceiling empty copy (pass-4 product call). |
 | 2026-07-29 | BL-025/026/027 Gemini live selectors, multi-account chooser, deep-link fragility (M4 S4 residuals). |
 | 2026-07-30 | BL-001 tab litter / supersede close race + BL-020 per-lab collapse marked done (hotfix branch). |
+| 2026-07-31 | BL-030/031/032 S8.2 close-out follow-ups (PR #36 review nits): README S8.1 row sync, R2 update-window stub, github-pages deployment branch rule cleanup. |
