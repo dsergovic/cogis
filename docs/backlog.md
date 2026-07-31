@@ -5,7 +5,7 @@ Pick up during polish, the next natural milestone, or a short fix branch.
 Do **not** treat this file as agent context unless the operator attaches it.
 
 **Integration branch:** `dev`  
-**Last updated:** 2026-07-29
+**Last updated:** 2026-07-31
 
 ---
 
@@ -53,6 +53,7 @@ Add new rows at the top of the relevant section. Prefer one line + link to PR/is
 
 | ID | Status | Item | Notes |
 | --- | --- | --- | --- |
+| BL-012 | open | **Project glossary** | Add `docs/glossary.md` as project-specific terminology (agents, labs, adapters, packs, WAR, capability labels, states, milestones, spikes, addenda, etc.) accretes. Populate incrementally as new terms enter the docs; cross-link from `README.md` and `docs/agent_blueprint.md` §1. Living reference, not a full audit. |
 | BL-010 | open | Operator quick note → GitHub Issue | Separate product idea (pre-filled issue URL; no stored PAT). Not in M1–M6 locks. Track outside or promote to a future milestone when ready. |
 | BL-011 | open | Promote `dev` → `main` | Human gate when a stabler line is wanted; not every milestone. |
 
