@@ -1,0 +1,274 @@
+/*
+ * Cogis page styling. Self-hosted, no fonts fetched, no third-party origin —
+ * `style-src 'self' 'unsafe-inline'` (§3.7) allows an inline style, but nothing
+ * here needs one, so the page ships zero inline CSS.
+ *
+ * Group boxes reserve their height up front (`--group-min-h`) so arriving
+ * chunks swap content inside an already-sized box instead of moving the page
+ * under the reader (§6 M8b AC #8).
+ */
+
+:root {
+  color-scheme: light dark;
+  --fg: #1a1a1a;
+  --fg-muted: #6b6b6b;
+  --bg: #fafafa;
+  --surface: #fff;
+  --border: #e2e2e2;
+  --accent: #d97706;
+  --group-min-h: 7.5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #ededed;
+    --fg-muted: #9a9a9a;
+    --bg: #111;
+    --surface: #191919;
+    --border: #2e2e2e;
+    --accent: #f59e0b;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  line-height: 1.5;
+}
+
+a {
+  color: var(--accent);
+}
+
+.cogis-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.cogis-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.cogis-wordmark {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.cogis-nav {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.875rem;
+}
+
+.cogis-main {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 3rem;
+}
+
+.cogis-notfound {
+  text-align: center;
+}
+
+.cogis-pill {
+  display: inline-block;
+  margin: 0 0 1.25rem;
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+}
+
+.cogis-pill[data-cogis-connection='connected'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.cogis-title {
+  margin: 0 0 1rem;
+  font-size: 2rem;
+  font-weight: 300;
+  letter-spacing: -0.02em;
+}
+
+#cogis-search-form {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.cogis-query {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.625rem 0.875rem;
+  font: inherit;
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+
+.cogis-query:disabled,
+.cogis-submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.cogis-submit {
+  padding: 0.625rem 1.25rem;
+  font: inherit;
+  font-weight: 600;
+  color: var(--bg);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.cogis-hint,
+.cogis-footnote {
+  margin: 0.75rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--fg-muted);
+}
+
+.cogis-gate {
+  padding: 2rem 1.5rem;
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+
+.cogis-gate-copy {
+  margin: 0 0 0.75rem;
+  font-size: 1.125rem;
+}
+
+.cogis-gate-cta {
+  margin: 0;
+}
+
+.cogis-results {
+  margin-top: 1.5rem;
+}
+
+.cogis-group {
+  min-height: var(--group-min-h);
+  padding: 0.875rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+
+.cogis-group-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.cogis-group-title {
+  font-weight: 600;
+}
+
+.cogis-capability {
+  padding: 0.0625rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  color: var(--fg-muted);
+}
+
+.cogis-group-status {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--fg-muted);
+}
+
+.cogis-group--login_required .cogis-group-status,
+.cogis-group--unavailable .cogis-group-status,
+.cogis-group--timeout .cogis-group-status {
+  color: var(--accent);
+}
+
+.cogis-result-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cogis-result-item {
+  border-top: 1px solid var(--border);
+}
+
+.cogis-result-item:first-child {
+  border-top: 0;
+}
+
+.cogis-result-link {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.cogis-result-link:hover .cogis-result-title {
+  text-decoration: underline;
+}
+
+.cogis-result-date {
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+}
+
+.cogis-prose {
+  margin-top: 2.5rem;
+  font-size: 0.9375rem;
+  color: var(--fg-muted);
+}
+
+.cogis-prose h2 {
+  font-size: 1rem;
+  color: var(--fg);
+}
+
+.cogis-footer {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 1.5rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+}

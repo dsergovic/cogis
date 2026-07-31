@@ -5,6 +5,7 @@ import {
   WEB_BRIDGE_TYPES,
 } from '../../extension/lib/web-bridge.js';
 import { loadClientApi, readClientSource } from '../helpers/bridge-client-harness.js';
+import { readWebFile } from '../helpers/page-harness.js';
 
 const source = readClientSource();
 const api = loadClientApi();
@@ -49,7 +50,26 @@ describe('page client stays a flat classic script', () => {
 });
 
 describe('web/ page hygiene', () => {
-  const pageSources = [['bridge-client.js', source]];
+  /**
+   * Every file the apex actually serves, with the non-`cogis.ai` origins each
+   * one is allowed to name. M8b AC #10 ("view-source shows zero third-party
+   * origins") is read here as zero third-party origins **loaded** — no script,
+   * stylesheet, font, image, or connection off-origin, which is what
+   * `connect-src 'none'` plus `default-src 'self'` enforce. It cannot be read
+   * as zero third-party hyperlinks, because the same §6 M8b scope paragraph
+   * mandates a `GitHub` header link, and the S8.2 copy table (LOCKED
+   * 2026-07-31) mandates that the install-gate link to GitHub-hosted install
+   * instructions. The allowlist below is the list of links that survive that
+   * reading; anything else is a regression.
+   */
+  const pageSources = [
+    ['bridge-client.js', source, []],
+    ['render.js', readWebFile('render'), ['https://chatgpt.com']],
+    ['page.js', readWebFile('page'), []],
+    ['index.html', readWebFile('index'), ['https://github.com/dsergovic/cogis']],
+    ['404.html', readWebFile('notFound'), []],
+    ['site.css', readWebFile('css'), []],
+  ];
 
   it('makes no network call from the page origin', () => {
     // §4 non-goal + CSP connect-src 'none'; M8b AC #9.
@@ -68,12 +88,26 @@ describe('web/ page hygiene', () => {
     }
   });
 
-  it('references no third-party origin', () => {
-    // M8b AC #10: view-source shows zero third-party origins.
+  it('loads every subresource from self', () => {
+    // M8b AC #12: no off-origin <script src> or <link rel=stylesheet href>.
     for (const [name, text] of pageSources) {
+      expect(text, name).not.toMatch(/<script[^>]+src=["']https?:/i);
+      expect(text, name).not.toMatch(/<link[^>]+href=["']https?:/i);
+      expect(text, name).not.toMatch(/@import|url\(\s*["']?https?:/i);
+    }
+  });
+
+  it('references no third-party origin beyond its allowlist', () => {
+    for (const [name, text, allowed] of pageSources) {
       const urls = text.match(/https?:\/\/[^\s"'`)]+/g) ?? [];
       for (const url of urls) {
-        expect(url, `${name} references ${url}`).toMatch(/^https:\/\/cogis\.ai(\/|$)/);
+        const ok =
+          /^https:\/\/cogis\.ai(\/|$)/.test(url) ||
+          allowed.some(
+            (prefix) =>
+              url === prefix || (url.startsWith(prefix) && /^[/#?]/.test(url.slice(prefix.length))),
+          );
+        expect(ok, `${name} references ${url}`).toBe(true);
       }
     }
   });
