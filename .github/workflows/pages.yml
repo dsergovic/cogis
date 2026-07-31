@@ -1,0 +1,62 @@
+# Publishes the `web/` subtree to GitHub Pages.
+#
+# Runs on every push to `dev` (the current active branch during M8 development)
+# and on manual `workflow_dispatch`. When M8e cutover happens and the site
+# is promoted to `main`, add `main` to the branches list (or move it there)
+# per the M8 addendum's phasing.
+#
+# Scope is deliberately narrow: this workflow ONLY uploads `web/` as the
+# Pages artifact. Everything else in the repo — extension source, docs,
+# tests — is untouched by the Pages build. If the placeholder page ever
+# needs a build step (e.g. a static-site generator in M8b), add it here
+# before the upload step; do NOT introduce a separate `web/` build system
+# without amending the M8 addendum.
+name: Pages
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - 'web/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+# One concurrent Pages deploy at a time. Newer runs cancel in-flight ones so
+# a fast series of `web/` edits doesn't queue up stale deploys.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+# Least-privilege token: only what Pages upload/deploy needs.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload web/ as Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+  deploy:
+    name: deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
