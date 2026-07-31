@@ -31,6 +31,8 @@ export default [
         Request: 'readonly',
         Headers: 'readonly',
         TextEncoder: 'readonly',
+        performance: 'readonly',
+        globalThis: 'readonly',
       },
     },
     rules: {

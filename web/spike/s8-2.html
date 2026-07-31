@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>S8.2 — install-gate latency harness</title>
+    <!--
+      Throwaway observation harness for spike S8.2 (install-gate detection
+      latency). Deleted when M8b lands, same lifecycle as web/spike/s8-1.html.
+
+      Protocol: docs/agent_blueprint-m8-web-surface.md §3.9
+      Spike:    docs/spikes/s8-2-install-gate-latency.md
+      Runbook:  docs/spikes/s8-2-measurement-runbook.md
+
+      The CSP below is the exact production policy from addendum §3.7, not a
+      relaxed harness variant — a measurement taken under a laxer policy would
+      not represent the shipped page. `script-src 'self'` is why every script
+      here is an external file and why there are no inline event handlers.
+      (`frame-ancestors` is not enforceable via <meta>; kept for parity with
+      §3.7 per the S8.1 infrastructure constraint.)
+
+      Both scripts are classic and un-deferred so the COGIS_HELLO emit lands on
+      the DOMContentLoaded tick S8.1 locked, not a module's deferred tick.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
+    />
+    <link rel="icon" href="data:," />
+    <style>
+      :root {
+        color-scheme: light dark;
+        --fg: #1a1a1a;
+        --fg-muted: #6b6b6b;
+        --bg: #fafafa;
+        --card: #fff;
+        --line: #e4e4e4;
+        --accent: #d97706;
+        --ok: #15803d;
+        --warn: #b91c1c;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --fg: #ededed;
+          --fg-muted: #9a9a9a;
+          --bg: #111;
+          --card: #1b1b1b;
+          --line: #2e2e2e;
+          --accent: #f59e0b;
+          --ok: #4ade80;
+          --warn: #f87171;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 1.5rem;
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+        line-height: 1.45;
+      }
+      main {
+        max-width: 54rem;
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: 1.125rem;
+        margin: 0 0 0.25rem;
+      }
+      h2 {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--fg-muted);
+        margin: 0 0 0.5rem;
+      }
+      .sub {
+        color: var(--fg-muted);
+        font-size: 0.8125rem;
+        margin: 0 0 1.25rem;
+      }
+      section {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 0.5rem;
+        padding: 0.875rem 1rem;
+        margin-bottom: 0.875rem;
+      }
+      .headline {
+        font-size: 2rem;
+        font-weight: 300;
+        letter-spacing: -0.02em;
+      }
+      .pill {
+        display: inline-block;
+        padding: 0.125rem 0.625rem;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        font-size: 0.6875rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .state-connected {
+        color: var(--ok);
+        border-color: var(--ok);
+      }
+      .state-gated {
+        color: var(--warn);
+        border-color: var(--warn);
+      }
+      .state-checking {
+        color: var(--accent);
+        border-color: var(--accent);
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.1875rem 0;
+        border-bottom: 1px dotted var(--line);
+        font-size: 0.8125rem;
+      }
+      .row span {
+        color: var(--fg-muted);
+      }
+      .row b {
+        font-variant-numeric: tabular-nums;
+      }
+      pre {
+        margin: 0;
+        padding: 0.625rem;
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-radius: 0.375rem;
+        font-size: 0.75rem;
+        overflow-x: auto;
+        user-select: all;
+      }
+      ol {
+        margin: 0;
+        padding-left: 1.25rem;
+        font-size: 0.75rem;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      ol li {
+        padding: 0.0625rem 0;
+      }
+      ol span {
+        color: var(--fg-muted);
+      }
+      .gate {
+        border-color: var(--warn);
+      }
+      .gate p {
+        font-size: 1rem;
+        margin: 0 0 0.375rem;
+      }
+      .draft {
+        font-size: 0.6875rem;
+        color: var(--warn);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      form {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        align-items: flex-end;
+        font-size: 0.75rem;
+      }
+      label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.1875rem;
+        color: var(--fg-muted);
+      }
+      input,
+      select,
+      button {
+        font: inherit;
+        padding: 0.25rem 0.375rem;
+        color: var(--fg);
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-radius: 0.25rem;
+      }
+      button {
+        cursor: pointer;
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      footer {
+        color: var(--fg-muted);
+        font-size: 0.6875rem;
+        margin-top: 1.25rem;
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+    </style>
+    <script src="../assets/js/bridge-client.js"></script>
+    <script src="./s8-2.js"></script>
+  </head>
+  <body>
+    <main>
+      <h1>S8.2 — install-gate detection latency harness</h1>
+      <p class="sub">
+        Throwaway spike fixture. Measures <code>COGIS_HELLO</code> → <code>COGIS_READY</code> on
+        cold loads so the install-gate budget can be picked from a measured distribution. Follow
+        <code>docs/spikes/s8-2-measurement-runbook.md</code>.
+      </p>
+
+      <section>
+        <h2>Result</h2>
+        <span id="state" class="pill">idle</span>
+        <div id="headline" class="headline">—</div>
+      </section>
+
+      <section id="connected" hidden>
+        <h2>Extension connected</h2>
+        <div class="row"><span>handshake resolved inside the probe budget</span><b>✓</b></div>
+      </section>
+
+      <section id="gate" class="gate" hidden>
+        <h2>Install-gate</h2>
+        <p>Install the Cogis Chrome extension to search.</p>
+        <span class="draft"
+          >working draft copy — not locked (S8.2 &ldquo;Install-gate copy&rdquo; table)</span
+        >
+      </section>
+
+      <section>
+        <h2>Timing</h2>
+        <div id="timing"></div>
+      </section>
+
+      <section>
+        <h2>Copy this row into the runbook table</h2>
+        <pre id="tsv"></pre>
+      </section>
+
+      <section>
+        <h2>Page-side drops</h2>
+        <div id="drops"></div>
+      </section>
+
+      <section>
+        <h2>Timeline (<code>performance.now()</code>, ms since navigation start)</h2>
+        <ol id="log"></ol>
+      </section>
+
+      <section id="settings">
+        <h2>Probe settings — reload applies them</h2>
+        <form>
+          <label
+            >budget ms (probe, not the locked budget)
+            <input id="budget" type="number" min="1" step="50" />
+          </label>
+          <label
+            >HELLO emit
+            <select id="hello">
+              <option value="dom-content-loaded">dom-content-loaded (S8.1 locked)</option>
+              <option value="immediate">immediate (head, readyState loading)</option>
+              <option value="load">load</option>
+            </select>
+          </label>
+          <label
+            >re-emit every ms (blank = off)
+            <input id="reemit" type="number" min="1" step="50" placeholder="off" />
+          </label>
+          <button id="apply" type="submit">Apply &amp; reload</button>
+        </form>
+      </section>
+
+      <footer>
+        No network calls (<code>connect-src 'none'</code>), no storage, no analytics. The nonce is
+        session-scoped and only its first 8 characters are ever displayed.
+      </footer>
+    </main>
+  </body>
+</html>
