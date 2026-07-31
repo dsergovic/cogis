@@ -48,6 +48,7 @@ Add new rows at the top of the relevant section. Prefer one line + link to PR/is
 | BL-025 | open | **M4 Gemini live selector polish** | S4 residual #1: thinnest platform / highest CSS churn. Pack selectors are stub-level (`historyItem` = `a[href*="/app/"]`). Confirm against a logged-in personal account; tighten `local-pack` without changing honesty rules. |
 | BL-026 | open | **M4 Gemini multi-account / chooser** | S4 residual #3: Google account chooser may confuse which session a background tab uses. Documented limitation; optional future: prefer active Gemini tab’s account chip over opening a new tab. |
 | BL-027 | open | **M4 Gemini deep-link fragility** | S4 residual #2: occasional `/app/{id}` breakage after Google-side changes. Cascade already falls back to `https://gemini.google.com/app`. Re-verify in operator smoke; no fake deep links. |
+| BL-028 | open | **M8 HTML conformance validator** | §6 M8b AC #12 says "HTML validates". `tests/unit/page-contract-parity.test.js` covers structural sanity only (doctype, `lang`, balanced containers, charset/title) because a real validator (`html-validate`, `vnu`) is a new devDependency and the stack lock keeps `web/` toolless. Add one when the page grows past two files, or accept the structural check as the standing bar. |
 
 ## S8.2 close-out follow-ups (from PR #36 review)
 
@@ -87,3 +88,4 @@ Add new rows at the top of the relevant section. Prefer one line + link to PR/is
 | 2026-07-29 | BL-025/026/027 Gemini live selectors, multi-account chooser, deep-link fragility (M4 S4 residuals). |
 | 2026-07-30 | BL-001 tab litter / supersede close race + BL-020 per-lab collapse marked done (hotfix branch). |
 | 2026-07-31 | BL-030/031/032 S8.2 close-out follow-ups (PR #36 review nits): README S8.1 row sync, R2 update-window stub, github-pages deployment branch rule cleanup. |
+| 2026-07-31 | BL-028 HTML conformance validator gap recorded while landing M8b PR-B. |
