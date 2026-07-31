@@ -58,6 +58,54 @@
         </table>
       </section>
 
+      <section class="cogis-debug-section" aria-labelledby="cogis-bridge-heading">
+        <h2 id="cogis-bridge-heading">Web bridge (cogis.ai)</h2>
+        <p class="cogis-debug-note" data-cogis-bridge="enabled">—</p>
+        <dl class="cogis-debug-dl" id="cogis-bridge-meta">
+          <div>
+            <dt>Handshakes</dt>
+            <dd data-cogis-bridge="handshakeCount">—</dd>
+          </div>
+          <div>
+            <dt>Accepted</dt>
+            <dd data-cogis-bridge="acceptedCount">—</dd>
+          </div>
+          <div>
+            <dt>Origin drops</dt>
+            <dd data-cogis-bridge="originDropCount">—</dd>
+          </div>
+          <div>
+            <dt>Nonce drops</dt>
+            <dd data-cogis-bridge="nonceDropCount">—</dd>
+          </div>
+          <div>
+            <dt>Malformed drops</dt>
+            <dd data-cogis-bridge="malformedDropCount">—</dd>
+          </div>
+          <div>
+            <dt>… of which oversized</dt>
+            <dd data-cogis-bridge="oversizedDropCount">—</dd>
+          </div>
+          <div>
+            <dt>Last handshake</dt>
+            <dd data-cogis-bridge="lastHandshakeAt">—</dd>
+          </div>
+        </dl>
+        <p class="cogis-debug-note">
+          Last five bridge request ids — ids and status only, never query text.
+        </p>
+        <ul class="cogis-debug-list" id="cogis-bridge-requests"></ul>
+        <p class="cogis-debug-note">
+          <strong>Outer boundary (Chrome-blocked — not counted above).</strong> When the page posts
+          with a target origin that does not match, Chrome refuses the delivery itself: the bridge
+          never sees the message, so no counter above moves. Those attempts surface only as console
+          warnings in the <code>cogis.ai</code> tab, of the form
+          <code data-cogis-bridge="postMessageWarning"></code> — <code>postMessage</code> does not
+          throw and gives the sender no programmatic signal, so this row is a pointer to the tab
+          console rather than a count.
+        </p>
+      </section>
+
       <section class="cogis-debug-section" aria-labelledby="cogis-ping-heading">
         <h2 id="cogis-ping-heading">Anonymous selector-failure ping</h2>
         <p class="cogis-debug-note">

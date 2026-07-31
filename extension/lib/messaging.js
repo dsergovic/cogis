@@ -23,6 +23,14 @@ export const MSG = Object.freeze({
   DEBUG_SET_PING_OPT_IN: 'DEBUG_SET_PING_OPT_IN',
   /** M6 debug panel: opt-in anonymous selector-failure ping for one platform. */
   DEBUG_SEND_PING: 'DEBUG_SEND_PING',
+  /** M8a bridge → SW: fold one drop/accept observation into the counters. */
+  WEB_BRIDGE_EVENT: 'WEB_BRIDGE_EVENT',
+  /** M8a bridge → SW: accepted page search, nonce already stripped. */
+  WEB_BRIDGE_SEARCH: 'WEB_BRIDGE_SEARCH',
+  /** M8a bridge → SW: accepted page cancel, nonce already stripped. */
+  WEB_BRIDGE_CANCEL: 'WEB_BRIDGE_CANCEL',
+  /** M8a SW → bridge tab: page-facing envelope to post to the page. */
+  WEB_BRIDGE_DELIVER: 'WEB_BRIDGE_DELIVER',
 });
 
 /** @typedef {'idle'|'loading'|'ready'|'empty'|'login_required'|'unavailable'|'timeout'} GroupStatus */

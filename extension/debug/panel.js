@@ -1,7 +1,9 @@
 import { MSG, createDebugSetPingOptIn, createDebugSendPing } from '../lib/messaging.js';
 import { PLATFORMS, PLATFORM_ORDER } from '../lib/platforms.js';
+import { WEB_BRIDGE_TARGET_ORIGIN_WARNING } from '../lib/web-bridge.js';
 
 const tbody = document.getElementById('cogis-platform-tbody');
+const bridgeRequests = document.getElementById('cogis-bridge-requests');
 const refreshBtn = document.getElementById('cogis-debug-refresh');
 const optInCheckbox = /** @type {HTMLInputElement|null} */ (
   document.getElementById('cogis-ping-opt-in')
@@ -102,6 +104,61 @@ function renderPlatforms(snapshot) {
 }
 
 /**
+ * Bridge counters are worker-owned (a content script cannot reach
+ * chrome.storage.session), so they arrive with the same snapshot as everything
+ * else. Ids and statuses only — no query text, no titles, no nonce.
+ * @param {object} snapshot
+ */
+function renderBridge(snapshot) {
+  const bridge = snapshot?.webBridge ?? {};
+  const set = (key, value) => {
+    for (const el of document.querySelectorAll(`[data-cogis-bridge="${key}"]`)) {
+      el.textContent = display(value);
+    }
+  };
+
+  set(
+    'enabled',
+    bridge.enabled === true
+      ? 'Web surface enabled for https://cogis.ai.'
+      : 'Web surface flag is off — the bridge registers no listeners and counters stay at zero.',
+  );
+  for (const key of [
+    'handshakeCount',
+    'acceptedCount',
+    'originDropCount',
+    'nonceDropCount',
+    'malformedDropCount',
+    'oversizedDropCount',
+  ]) {
+    set(key, bridge[key] ?? 0);
+  }
+  set(
+    'lastHandshakeAt',
+    typeof bridge.lastHandshakeAt === 'number'
+      ? new Date(bridge.lastHandshakeAt).toISOString()
+      : 'never',
+  );
+  set('postMessageWarning', WEB_BRIDGE_TARGET_ORIGIN_WARNING);
+
+  if (!bridgeRequests) return;
+  bridgeRequests.replaceChildren();
+  const recent = Array.isArray(bridge.recentRequests) ? bridge.recentRequests : [];
+  if (!recent.length) {
+    const li = document.createElement('li');
+    li.textContent = 'No bridge requests this session.';
+    bridgeRequests.append(li);
+    return;
+  }
+  for (const entry of recent) {
+    const li = document.createElement('li');
+    li.dataset.cogisBridgeRequest = entry?.requestId ?? '';
+    li.textContent = `${display(entry?.requestId)} · ${display(entry?.status)}`;
+    bridgeRequests.append(li);
+  }
+}
+
+/**
  * @param {object} snapshot
  */
 function renderPrefs(snapshot) {
@@ -133,6 +190,7 @@ async function loadSnapshot() {
   renderPack(snapshot);
   renderPrefs(snapshot);
   renderPlatforms(snapshot);
+  renderBridge(snapshot);
 }
 
 refreshBtn?.addEventListener('click', () => {

@@ -35,6 +35,7 @@ export default [
         Response: 'readonly',
         Request: 'readonly',
         Headers: 'readonly',
+        TextEncoder: 'readonly',
       },
     },
     rules: {

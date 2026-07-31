@@ -23,8 +23,25 @@ import { getSelectorPackStatus, refreshSelectorPack } from '../lib/selectors/loa
 import { getDebugStatsSnapshot, getPlatformStat, recordPlatformStat } from '../lib/debug-stats.js';
 import { loadDebugPrefs, savePingOptIn } from '../lib/debug-prefs.js';
 import { buildPingPayload, maybeSendAnonymousPing, PING_ENDPOINT_URL } from '../lib/ping.js';
+import { WEB_SEARCH_SURFACE_ENABLED } from '../lib/flags.js';
+import {
+  createBridgeCancelDone,
+  getWebBridgeSnapshot,
+  isBridgeSenderOrigin,
+  noteBridgeRequest,
+  recordBridgeEvent,
+  toBridgeEnvelope,
+} from '../lib/web-bridge.js';
 
 const tracker = createRequestTracker();
+
+/**
+ * requestId → tab id, for requests that arrived over the M8a web bridge.
+ * Empty whenever WEB_SEARCH_SURFACE_ENABLED is false, which is what keeps the
+ * flag-off path free of observable effects.
+ * @type {Map<string, number>}
+ */
+const bridgeTabs = new Map();
 
 /**
  * Monotonic epoch for SEARCH_REQUEST acceptance (BL-001 / B3).
@@ -338,6 +355,38 @@ function emit(msg) {
   chrome.runtime.sendMessage(msg).catch(() => {
     // Popup may be closed.
   });
+  mirrorToBridge(msg);
+}
+
+/**
+ * Additionally push a broadcast to the bridge tab that owns the request. The
+ * runtime broadcast above only reaches extension pages, so a content script
+ * needs its own tabs.sendMessage hop.
+ *
+ * Popup-originated requests are not in `bridgeTabs`, so this is a no-op for
+ * them and the popup contract stays byte-identical.
+ * @param {{ requestId?: string }} msg
+ */
+function mirrorToBridge(msg) {
+  if (!WEB_SEARCH_SURFACE_ENABLED) return;
+  const tabId = bridgeTabs.get(msg?.requestId);
+  if (tabId === undefined) return;
+  const envelope = toBridgeEnvelope(msg);
+  if (!envelope) return;
+  if (envelope.type === 'WEB_BRIDGE_PLATFORM_DONE') {
+    noteBridgeRequest({ requestId: envelope.requestId, status: envelope.status });
+  }
+  deliverToBridgeTab(tabId, envelope);
+}
+
+/**
+ * @param {number} tabId
+ * @param {object} envelope
+ */
+function deliverToBridgeTab(tabId, envelope) {
+  chrome.tabs.sendMessage(tabId, { type: MSG.WEB_BRIDGE_DELIVER, envelope }).catch(() => {
+    // Page navigated away from under the bridge.
+  });
 }
 
 /**
@@ -399,6 +448,10 @@ async function buildDebugSnapshot() {
       lastErrorCode: pack.lastErrorCode,
     },
     ...getDebugStatsSnapshot(),
+    webBridge: {
+      enabled: WEB_SEARCH_SURFACE_ENABLED,
+      ...getWebBridgeSnapshot(),
+    },
     extensionVersion: extensionVersion() ?? null,
   };
 }
@@ -654,10 +707,41 @@ async function runSearch(request) {
     }
     await maybeCloseCreatedTabs(searchState.get(requestId), requestId);
     searchState.delete(requestId);
+    bridgeTabs.delete(requestId);
   }
 }
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+/**
+ * Accept a search on either surface. Epoch + cancel-by-searchState (not
+ * activeId): popup CANCEL nulls the tracker before REQUEST arrives, so an
+ * activeId-only supersede is a no-op (B1).
+ * @param {{ requestId: string, query: string, platforms?: string[] }} input
+ */
+function launchSearch(input) {
+  const epoch = (searchEpoch += 1);
+  void (async () => {
+    await cancelOtherSearches(input.requestId);
+    if (!isSearchEpochCurrent(epoch, searchEpoch)) return;
+    await runSearch({
+      requestId: input.requestId,
+      query: input.query,
+      platforms: input.platforms ?? PLATFORM_ORDER,
+      epoch,
+    });
+  })();
+}
+
+/**
+ * Second of the two boundary checks (addendum §3.9). The bridge already
+ * enforced `event.origin`; the worker does not trust the bridge and re-checks
+ * the sending tab's URL. Flag-off rejects everything.
+ * @param {chrome.runtime.MessageSender|undefined} sender
+ */
+function acceptBridgeSender(sender) {
+  return WEB_SEARCH_SURFACE_ENABLED && isBridgeSenderOrigin(sender?.tab?.url);
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || typeof message.type !== 'string') return false;
 
   if (message.type === MSG.SEARCH_CANCEL) {
@@ -691,23 +775,52 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       return false;
     }
 
-    const requestId = message.requestId;
-    // Epoch + cancel-by-searchState (not activeId): popup CANCEL nulls the
-    // tracker before REQUEST arrives, so getActiveId()-only supersede is a no-op (B1).
-    const epoch = (searchEpoch += 1);
-    void (async () => {
-      await cancelOtherSearches(requestId);
-      if (!isSearchEpochCurrent(epoch, searchEpoch)) return;
-      await runSearch({
-        requestId,
-        query,
-        platforms: message.platforms ?? PLATFORM_ORDER,
-        epoch,
-      });
-    })();
-
-    sendResponse({ ok: true, requestId });
+    launchSearch({ requestId: message.requestId, query, platforms: message.platforms });
+    sendResponse({ ok: true, requestId: message.requestId });
     return false;
+  }
+
+  if (message.type === MSG.WEB_BRIDGE_EVENT) {
+    if (!acceptBridgeSender(sender)) {
+      sendResponse({ ok: false, error: 'origin_reject' });
+      return false;
+    }
+    recordBridgeEvent({ kind: message.kind, reason: message.reason, at: message.at });
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  if (message.type === MSG.WEB_BRIDGE_SEARCH) {
+    if (!acceptBridgeSender(sender)) {
+      sendResponse({ ok: false, error: 'origin_reject' });
+      return false;
+    }
+    const query = normalizeQuery(message.query);
+    if (!query) {
+      sendResponse({ ok: false, error: 'empty_query' });
+      return false;
+    }
+    bridgeTabs.set(message.requestId, sender.tab.id);
+    noteBridgeRequest({ requestId: message.requestId, status: 'running' });
+    launchSearch({ requestId: message.requestId, query, platforms: message.platforms });
+    sendResponse({ ok: true, requestId: message.requestId });
+    return false;
+  }
+
+  if (message.type === MSG.WEB_BRIDGE_CANCEL) {
+    if (!acceptBridgeSender(sender)) {
+      sendResponse({ ok: false, error: 'origin_reject' });
+      return false;
+    }
+    // Same cancelSearch path the popup takes, so cancel isolation and
+    // supersede semantics are inherited rather than reimplemented. The page
+    // then gets one done frame with platform:"all" — not one per platform.
+    void cancelSearch(message.requestId).then(() => {
+      noteBridgeRequest({ requestId: message.requestId, status: 'cancelled' });
+      deliverToBridgeTab(sender.tab.id, createBridgeCancelDone(message.requestId));
+      sendResponse({ ok: true });
+    });
+    return true;
   }
 
   return false;
