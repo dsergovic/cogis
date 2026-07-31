@@ -7,9 +7,12 @@
 // Deliberately NOT production code:
 // - Logs everything to console with a [s8.1-bridge] prefix so the spike page
 //   can grep it. Production bridge will be silent.
-// - Stores counters in `chrome.storage.session` under one key so the spike
-//   page can round-trip them for the finding. Production bridge will surface
-//   them via the M6 debug panel.
+// - Counters are in-memory only (module scope). They reset on every page
+//   navigation, which matches the page-lifetime handshake session semantics.
+//   The first draft of this file used chrome.storage.session; that requires
+//   the "storage" permission AND the SW to call session.setAccessLevel from
+//   a privileged context, which is more machinery than a spike needs. The
+//   spike page reads counters by parsing the [s8.1-bridge] console log.
 // - Does not verify caller identity beyond origin + nonce + envelope shape.
 //   That is exactly what the spike is here to prove sufficient.
 //
@@ -58,15 +61,22 @@ function observe(kind, detail) {
   return entry;
 }
 
-function persistCounters() {
-  // Fire-and-forget. The spike page reads counters via
-  // chrome.runtime.sendMessage → SW → chrome.storage.session.
-  try {
-    chrome.storage.session.set({ s81Counters: { ...counters } });
-  } catch (e) {
-    observe('persist_error', { message: String(e) });
-  }
-}
+// Types this bridge SENDS to the page. When the bridge receives one back on
+// its own `window` listener, that's the bridge observing its own outbound
+// message — not a real inbound message. Silently ignore before any counter
+// or validation step runs.
+//
+// Finding: postMessage delivers the message to every listener on the target
+// window, including listeners registered by the sender. `event.source` equals
+// the current `window` in that case, so the STEP 2 guard ("event.source must
+// be the page's own window") does NOT catch it. The real M8a bridge must
+// filter its own outbound types explicitly, OR use a channel-direction tag,
+// OR post to a dedicated MessageChannel instead of `window.postMessage`.
+const BRIDGE_ORIGINATED_TYPES = new Set([
+  'COGIS_READY',
+  'WEB_BRIDGE_RESULT_CHUNK',
+  'WEB_BRIDGE_PLATFORM_DONE',
+]);
 
 function isPlainString(v) {
   return typeof v === 'string' && v.length > 0;
@@ -104,11 +114,24 @@ function post(msg) {
 }
 
 window.addEventListener('message', (event) => {
+  // STEP 0: silently ignore the bridge's own outbound types. `window.postMessage`
+  // dispatches to every listener on the target window, including the sender's
+  // own listener. Without this, a `COGIS_READY` we posted would come right
+  // back to us as `unknown_type` and inflate malformedDropCount. This is a
+  // real finding for M8a; see BRIDGE_ORIGINATED_TYPES above.
+  if (
+    event.data &&
+    typeof event.data === 'object' &&
+    typeof event.data.type === 'string' &&
+    BRIDGE_ORIGINATED_TYPES.has(event.data.type)
+  ) {
+    return;
+  }
+
   // STEP 1: origin lock (string equality).
   if (event.origin !== EXPECTED_ORIGIN) {
     counters.originDropCount++;
     observe('drop_origin', { origin: event.origin, type: event.data && event.data.type });
-    persistCounters();
     return;
   }
 
@@ -116,10 +139,12 @@ window.addEventListener('message', (event) => {
   // against a hostile subframe posting from the same origin string (see
   // s8-1 residuals — sandboxed iframes get "null" origin, but a same-origin
   // iframe would pass origin check).
+  //
+  // Note: this guard does NOT catch same-window self-posts. Those are
+  // handled by STEP 0 above.
   if (event.source !== window) {
     counters.originDropCount++;
     observe('drop_source', { origin: event.origin });
-    persistCounters();
     return;
   }
 
@@ -136,7 +161,6 @@ window.addEventListener('message', (event) => {
       counters.malformedDropCount++;
       observe('drop_malformed', { reason: result.reason, type: msg && msg.type });
     }
-    persistCounters();
     return;
   }
 
@@ -148,7 +172,6 @@ window.addEventListener('message', (event) => {
     if (handshakeSeen && msg.nonce !== sessionNonce) {
       counters.nonceDropCount++;
       observe('drop_second_hello_nonce', { received: msg.nonce, expected: sessionNonce });
-      persistCounters();
       return;
     }
     handshakeSeen = true;
@@ -156,7 +179,6 @@ window.addEventListener('message', (event) => {
     counters.helloCount++;
     counters.acceptedCount++;
     observe('accepted_hello', { nonce: sessionNonce });
-    persistCounters();
     post({
       type: 'COGIS_READY',
       nonce: sessionNonce,
@@ -171,33 +193,28 @@ window.addEventListener('message', (event) => {
   if (!handshakeSeen) {
     counters.malformedDropCount++;
     observe('drop_pre_handshake', { type: msg.type });
-    persistCounters();
     return;
   }
 
   counters.acceptedCount++;
   observe('accepted', { type: msg.type, requestId: msg.requestId });
-  persistCounters();
 
   // Forward accepted envelopes to the SW. The SW replies with a canned
   // chunk + done sequence.
-  chrome.runtime.sendMessage(
-    { source: 's8.1-bridge', envelope: msg },
-    (_reply) => {
-      // Ignored on the bridge side. The SW pushes results asynchronously
-      // via chrome.tabs.sendMessage → the tab's content script — but for
-      // the spike, we take the direct path: SW returns a reply, we forward.
-      if (chrome.runtime.lastError) {
-        observe('sw_error', { message: chrome.runtime.lastError.message });
-        return;
-      }
-      if (!_reply) return;
-      if (Array.isArray(_reply.chunks)) {
-        for (const chunk of _reply.chunks) post({ ...chunk, nonce: sessionNonce });
-      }
-      if (_reply.done) post({ ...(_reply.done || {}), nonce: sessionNonce });
+  chrome.runtime.sendMessage({ source: 's8.1-bridge', envelope: msg }, (_reply) => {
+    // Ignored on the bridge side. The SW pushes results asynchronously
+    // via chrome.tabs.sendMessage → the tab's content script — but for
+    // the spike, we take the direct path: SW returns a reply, we forward.
+    if (chrome.runtime.lastError) {
+      observe('sw_error', { message: chrome.runtime.lastError.message });
+      return;
     }
-  );
+    if (!_reply) return;
+    if (Array.isArray(_reply.chunks)) {
+      for (const chunk of _reply.chunks) post({ ...chunk, nonce: sessionNonce });
+    }
+    if (_reply.done) post({ ...(_reply.done || {}), nonce: sessionNonce });
+  });
 });
 
 observe('bridge_loaded', {
