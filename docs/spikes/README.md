@@ -12,7 +12,7 @@ Written findings for framework Tier 3 spikes. Owned by Human + Perplexity.
 | S6 Long-history reach | [s6-long-history-reach.md](./s6-long-history-reach.md) | Resolved (matrix) | 2026-07-28 |
 | S7 Grok history contract | [s7-grok-history-contract.md](./s7-grok-history-contract.md) | **Open — stub only** (all fields `TBD`; live fill-in required before M7 can claim its AC) | — |
 | S8.1 postMessage handshake contract | [s8-1-postmessage-handshake-contract.md](./s8-1-postmessage-handshake-contract.md) | **Open — stub only** (all fields `TBD`; live fill-in required before M8a can claim its AC) | — |
-| S8.2 Install-gate detection latency | [s8-2-install-gate-latency.md](./s8-2-install-gate-latency.md) | **Open — stub only** (all fields `TBD`; live fill-in required before M8b can claim its AC) | — |
+| S8.2 Install-gate detection latency | [s8-2-install-gate-latency.md](./s8-2-install-gate-latency.md) | **CLOSED — measured** (budget locked 900 ms; forced addendum §3.9 re-emit amendment, v0.1.1). Receipts: [measurement runbook](./s8-2-measurement-runbook.md) | 2026-07-31 |
 | S8.3 GitHub Pages apex + `www` redirect + custom-domain HTTPS | [s8-3-github-pages-apex-and-www.md](./s8-3-github-pages-apex-and-www.md) | **Open — stub only** (all fields `TBD`; live fill-in required before M8e can claim its AC) | — |
 
 S8.x spikes are authored alongside `docs/agent_blueprint-m8-web-surface.md` v0.1.0 and cover the M8 web search surface at `cogis.ai/`.

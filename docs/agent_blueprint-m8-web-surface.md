@@ -6,7 +6,7 @@
 **Parent blueprint:** [`docs/agent_blueprint.md`](./agent_blueprint.md) **v0.3.0** (locked; this addendum amends only the sections named in §11 below)
 **Phase 0 input for M8:** this document (Phase-0-style addendum for the M8 web search surface)
 **Status:** Phase 0 addendum — awaiting dual reviewer sign-off (Claude Code + Codex) and human merge before any implementation branch is cut
-**Version:** 0.1.0
+**Version:** 0.1.1
 **Integration branch:** `dev`
 **Depends on:** M1–M4 adapters (merged), M5 selector manifest (merged), M6 debug panel (merged); **does not depend on M7 (Grok)**
 
@@ -116,7 +116,13 @@ cogis/
 Notes:
 
 - The static site is **plain HTML/CSS/vanilla JS**. No framework, no bundler, no transpile step. Matches parent §3.4 stack posture.
-- GitHub Pages source = `main` branch, folder `/web`. `dev` never publishes.
+- GitHub Pages publishes the `web/` tree **from `dev` during M8 development** —
+  see §6 M8b and `.github/workflows/pages.yml`, which is the workflow of record.
+  The move to publishing from `main` happens at **M8e**, with the DNS cutover
+  and the flag flip. _(v0.1.1: this replaces "GitHub Pages source = `main`
+  branch, folder `/web`. `dev` never publishes." — that sentence never matched
+  the workflow on disk, and publishing from `dev` is what made the S8.2 live
+  measurement possible at all.)_
 - The bridge protocol contract lives in **two mirrored files**: `extension/content/web-bridge.js` (SW side) and `web/assets/js/bridge-client.js` (page side). Any change to the envelope shape must land in the same PR on both sides.
 
 ### 3.4 Naming standards
@@ -203,7 +209,38 @@ The following is the **normative** contract. Implementers land the code that mat
   `{ type: "COGIS_HELLO", nonce: <128-bit hex>, v: 1 }`
 - Content script reply (via `window.postMessage(msg, "https://cogis.ai")`):
   `{ type: "COGIS_READY", nonce: <echoed>, v: 1, extVersion: <string>, capabilities: { search: true, cancel: true } }`
-- Page treats **no reply within the S8.2 install-gate budget** (S8.2 fills the number; see §5) as "extension not installed" and renders the install-gate.
+- Page treats **no reply within the install-gate budget of `900 ms`** (S8.2, locked 2026-07-31; see §5) as "extension not installed" and renders the install-gate.
+
+**Re-emission (v0.1.1 — S8.2)**
+
+- The page **MAY** re-emit `COGIS_HELLO` while it is still waiting, on a fixed cadence of **100 ms**.
+- Every re-emit carries the **same session nonce** as the first. The bridge treats a repeat of the same nonce as **idempotent** and re-replies `COGIS_READY` — this is existing behavior, not a new requirement: see the hello-nonce branch in `extension/content/web-bridge.js` ("a repeat of the same nonce is idempotent and re-replies READY"). A *different* nonce still fails closed as a nonce mismatch.
+- Re-emission **stops on the first `COGIS_READY`**, and in any case at the budget.
+- **The budget clock runs from the FIRST emit**, not the most recent one. Page-load latency therefore does not consume the budget: under Slow 4G the first HELLO was observed ~3.7 s after navigation with the handshake still resolving in ~500 ms.
+- This is a **MAY, not a MUST**, only in the sense that a page is free to emit once and accept the consequence. In practice a page that does not re-emit **will** false-positive the install-gate: see below.
+
+**Why (S8.2 finding, do not silently revert this)**
+
+§3.8 sets the bridge content script to `run_at: document_idle`, which fires at
+or after `DOMContentLoaded`. A **single** `COGIS_HELLO` emitted at the
+`DOMContentLoaded` tick — or earlier — is therefore **structurally lost**: it is
+posted before any bridge listener exists, the bridge never hears it, and **no
+drop is recorded on either side**. The user-visible result is an install-gate on
+a machine that has the extension installed, enabled, and working.
+
+Measured live on real hardware, extension installed and enabled
+(`docs/spikes/s8-2-install-gate-latency.md`): `?hello=dom-content-loaded` gated,
+`?hello=immediate` gated, `?hello=load` connected in 15.0 ms, and
+`dom-content-loaded` **with** a re-emit cadence connected on its second emit.
+The same loss reproduced in the PR #35 sandbox.
+
+Emitting at `load` instead was considered and **rejected**: it makes the install
+decision hostage to the `load` event, which under Slow 4G arrives seconds after
+the user is already looking at the page. The re-emit cadence keeps the decision
+on the page's own clock.
+
+Because the fix is a page-side cadence over an already-idempotent bridge branch,
+**no extension-side change is required** by this amendment.
 
 **Search**
 
@@ -254,8 +291,10 @@ Owned by Human + Perplexity per framework §3.5 Tier 3, same as S1–S7. Finding
 **S8.1 — postMessage handshake contract.**
 Confirm the handshake envelope shape survives Chrome's isolated-world boundary in a fresh unpacked build; confirm the content script's `document_idle` timing produces a `COGIS_READY` reply within the install-gate budget on a cold `cogis.ai` load; confirm origin-lock strictness (mismatched origins are silently dropped and never leak into the SW). Blocks M8a AC.
 
-**S8.2 — Install-gate detection latency.**
+**S8.2 — Install-gate detection latency. CLOSED 2026-07-31 — budget `900 ms`.**
 Characterize the latency distribution of `COGIS_HELLO → COGIS_READY` on real machines. Pick a handshake budget that (a) is short enough that a real "extension not installed" case renders the install-gate quickly, and (b) is long enough not to false-positive install-gates on slow machines. Recommended starting probe range: 400 ms – 1200 ms; the spike picks and defends one number. Also confirms the false-positive rate when a user has the extension installed but disabled per-origin. Blocks M8b AC.
+
+**Resolved (`docs/spikes/s8-2-install-gate-latency.md`):** budget **900 ms** — inside the probe range, so **Tier 2**. Unthrottled cold p95 117.2 ms over 10 runs; worst observed handshake 665.3 ms under Slow 4G + 4× CPU; **0 false positives across 24 installed runs**; install-gate renders at budget + ≤ 4.1 ms. The spike also forced the §3.9 re-emit amendment in this revision — **the 900 ms budget is only valid together with the 100 ms re-emit cadence**, since without it the handshake is lost outright and no budget in the range would help.
 
 **S8.3 — GitHub Pages apex + `www` redirect + custom-domain HTTPS.**
 Confirm the exact DNS records needed for apex `cogis.ai` (`ALIAS`/`ANAME`/four `A` records to GitHub Pages IPs, per current GitHub docs) plus the `CNAME` for `www.cogis.ai`; confirm GitHub Pages issues an apex Let's Encrypt certificate and 301s `www → apex` automatically once both hostnames are configured; time the propagation window; document the exact `web/CNAME` contents. Blocks M8e AC.
@@ -316,11 +355,11 @@ Follows the parent §10 pattern. Each M8x is its own PR against `dev`, human-mer
 - `web/CNAME` = `cogis.ai`. `web/404.html` renders a minimal "page not found — go to `/`" link.
 - CSP meta tag per §3.7.
 - Flag on the extension side flipped to `true` for a **local human smoke build only** — not for any published extension build. This lets the human verify the ChatGPT loop end-to-end on a real profile; the shipped extension version does not enable the flag until M8e.
-- `.github/workflows/pages.yml` configured to publish `web/` from `main` on merge; no publish from `dev`.
+- `.github/workflows/pages.yml` publishes `web/` **from `dev`** for the duration of M8 development, which is the workflow already on disk and is not modified by M8b. The switch to publishing from `main` is **M8e** work, landing with the DNS cutover and the flag flip. _(v0.1.1: this replaces "configured to publish `web/` from `main` on merge; no publish from `dev`", which contradicted the committed workflow. Publishing from `dev` is a deliberate development-phase posture — it is what let S8.2 reach the real `https://cogis.ai` origin, which `localhost` and `file://` structurally cannot. Note the consequence: **anything merged to `dev` under `web/` is live on the public apex**, so `web/` must stay presentable on `dev`, not just on `main`. Publishing from `dev` **permanently** would be the Tier-3 deploy-topology change in §10 — this is a phase, with M8e as its end date.)_
 
 **Behavioral AC (page).**
 
-1. Cold-loading `https://<gh-pages-preview-url>/` (or a `file://` build for the human smoke) with the extension installed and the flag on locally produces a searchbox, autofocus, install-status pill showing "Extension connected."
+1. Cold-loading **`https://cogis.ai/`** — the apex, published from `dev` by `pages.yml` during M8 development — with the extension installed and the flag on locally produces a searchbox, autofocus, and an install-status pill showing "Extension connected." _(v0.1.1: this replaces "`https://<gh-pages-preview-url>/` (or a `file://` build for the human smoke)", which was **unsatisfiable as written**. The bridge cannot accept either origin: manifest `matches` is `https://cogis.ai/*` (§3.8) and the origin gate is string equality against `https://cogis.ai` (§3.4, §3.9) — no glob, no regex, no dev override. A preview URL or a `file://` build would render the install-gate 100% of the time and prove nothing.)_ Where publishing is not wanted, the sanctioned fallback for local smoke is the origin-spoof recipe in `docs/spikes/s8-2-measurement-runbook.md` §3 Path B — `--host-resolver-rules="MAP cogis.ai 127.0.0.1:<port>"` against a self-signed `CN=cogis.ai` server, which yields a genuine `https://cogis.ai` origin with the content script injecting and replying. Path B is valid for **behavioral** verification of this AC; it is **not** valid for timing claims, because the transport is loopback.
 2. Cold-loading the same URL **without** the extension shows the install-gate within the S8.2 handshake budget; no searchbox is rendered until the handshake resolves.
 3. Enter with a non-empty query runs one search; results appear in the ChatGPT group with the full-text capability label per parent §4.2.
 4. Empty / whitespace submit clears results, cancels in-flight, shows the "Type a query and press Enter." hint (same copy family as popup per parent §4.6).
@@ -513,4 +552,5 @@ M8 sub-milestones will be handed off via `docs/handoff-prompts.md` in the same p
 
 | Version | Date | Change |
 | --- | --- | --- |
+| 0.1.1 | 2026-07-31 | **S8.2 fold-back.** Records the closed S8.2 finding and fixes two statements that could not be implemented as written. (1) **§3.9 — re-emission amendment:** the page MAY re-emit `COGIS_HELLO` on a **100 ms** cadence carrying the **same nonce**, stopping on the first `COGIS_READY`, with the budget clock running from the **first** emit. A single HELLO at `DOMContentLoaded` or earlier is structurally lost against a `run_at: document_idle` bridge — measured live, gated on real hardware with zero drops recorded. No extension-side change: same-nonce repeats were already idempotent on the bridge. (2) **§3.9 / §5 — install-gate budget filled: `900 ms`**, Tier 2, defended against a throttled worst case of 665.3 ms and 0 false positives in 24 installed runs. (3) **§6 M8b AC #1 — origin corrected** from a GH Pages preview URL / `file://` (both unsatisfiable: the origin gate is string equality against `https://cogis.ai`) to the apex, with the runbook's origin-spoof recipe named as the sanctioned local-smoke fallback. (4) **§3.3 note and §6 M8b scope — Pages publish source corrected** to `dev` during M8 development, matching the committed `pages.yml`; the move to `main` is M8e. No code changes; `pages.yml` untouched; flag still `false`. |
 | 0.1.0 | 2026-07-30 | Initial Phase-0-style addendum for the M8 web search surface. Authors the two-deployable architecture (extension + `cogis.ai` static site under `web/`), the postMessage bridge with strict origin lock (`https://cogis.ai` string equality) and nonce echo, the `WEB_SEARCH_SURFACE_ENABLED` feature flag, the CSP lock (`connect-src 'none'`), the `www.cogis.ai` → apex redirect posture, the S8.1–S8.3 spike stubs, and the M8a–M8e sub-milestones with behavioral AC. Lists the surgical amendments to the parent blueprint (§11 of this addendum) to be applied in a follow-up docs PR after human merge. No code changes; no `web/` subtree yet; no manifest changes yet. |
