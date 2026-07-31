@@ -107,7 +107,7 @@ Feeds directly into M8a implementation. Full context per constraint lives in the
 - **`sender.tab.url` origin check on the SW side** was not directly observed in the spike (the spike SW trusted the bridge). M8a must add this second origin check independent of the bridge and record its behavior; expected to be additive to this contract, not contradictory.
 - **`bad_platforms`** validation was deferred to M8a integration tests. The validation-ordering pattern (nonce upstream of per-type fields) is already established, so `bad_platforms` will follow the same shape as `bad_query` and `missing_requestId`.
 - **`event.origin === "null"`** and **`https://www.cogis.ai`** were not directly observed. Both are expected to hit the bridge's string-equality gate as ordinary origin drops if they ever reach the bridge; no path to construct them was available in the spike environment.
-- **The spike harness (`spike-ext/`, `web/spike/`) has been deleted** by this teardown PR. It served as a debug tool while the M8a bridge was implemented (PR #33) and was torn down immediately after, satisfying the requirement that it not reach `main`.
+- **The spike harness (`spike-ext/`, `web/spike/`) has been deleted** by PR #34. It served as a debug tool while the M8a bridge was implemented (PR #33) and was torn down immediately after, satisfying the requirement that it not reach `main`.
 
 ## Definition of done — satisfied
 
@@ -123,8 +123,8 @@ Feeds directly into M8a implementation. Full context per constraint lives in the
 
 - Chronological observation log: [`./s8-1-observation-log.md`](./s8-1-observation-log.md) — includes all 5 rounds of interactive observations, cumulative findings table, and 11 design constraints with full context.
 - M8 addendum: [`../agent_blueprint-m8-web-surface.md`](../agent_blueprint-m8-web-surface.md) v0.1.0 — the design this spike was verifying.
-- Spike bridge source: `spike-ext/content/web-bridge.js` — deleted by the teardown PR. Recoverable from git history; the shipped equivalent is `extension/content/web-bridge.js`.
-- Spike harness page source: `web/spike/s8-1.html` — deleted by the teardown PR. Recoverable from git history.
+- Spike bridge source: `spike-ext/content/web-bridge.js` — deleted by PR #34. Recoverable from git history; the shipped equivalent is `extension/content/web-bridge.js`.
+- Spike harness page source: `web/spike/s8-1.html` — deleted by PR #34. Recoverable from git history.
 - Related PRs:
   - PR #27 — spike harness landed
   - PR #28 — bridge self-echo fix + CSP cleanup
