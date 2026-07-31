@@ -1,0 +1,25 @@
+[
+  {
+    "uuid": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "context_uuid": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+    "title": "Weeknight tomato soup recipe",
+    "slug": "weeknight-tomato-soup-recipe-abc123",
+    "last_query_datetime": "2024-07-03T12:00:00.000Z",
+    "display_model": "turbo",
+    "content": "secret body must not appear in pointers"
+  },
+  {
+    "uuid": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    "context_uuid": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+    "title": "Space-only planning notes",
+    "slug": "space-only-planning-notes-xyz789",
+    "last_query_datetime": "2024-06-01T08:30:00.000Z",
+    "display_model": "turbo",
+    "collection_uuid": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+    "collection": {
+      "uuid": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+      "title": "Kitchen Research",
+      "slug": "kitchen-research"
+    }
+  }
+]

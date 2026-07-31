@@ -1,0 +1,76 @@
+{
+  "version": "1.3.0",
+  "platforms": {
+    "chatgpt": {
+      "origin": "https://chatgpt.com",
+      "loginUrl": "https://chatgpt.com/",
+      "deepLinkPattern": "https://chatgpt.com/c/{id}",
+      "selectors": {
+        "loginButton": "[data-testid=\"login-button\"]",
+        "signupButton": "[data-testid=\"signup-button\"]",
+        "searchChatsButton": "button[aria-label=\"Search chats\"]",
+        "chatHistoryNav": "nav[aria-label=\"Chat history\"]",
+        "createNewChatButton": "[data-testid=\"create-new-chat-button\"]"
+      },
+      "endpoints": {
+        "session": "/api/auth/session",
+        "search": "/backend-api/conversations/search"
+      },
+      "searchQueryParams": ["query", "q"],
+      "notes": "Consumed at runtime by lib/chatgpt-adapter.js (content script dynamic-imports that module). DOM result-row selectors for fallback not yet live-confirmed; endpoint-first per S1."
+    },
+    "perplexity": {
+      "origin": "https://www.perplexity.ai",
+      "loginUrl": "https://www.perplexity.ai/",
+      "deepLinkPattern": "https://www.perplexity.ai/search/{slug}",
+      "prefillPattern": "https://www.perplexity.ai/search?q=",
+      "apiVersion": "2.18",
+      "apiClient": "default",
+      "selectors": {
+        "signIn": "a[href*=\"/signin\"], button[aria-label*=\"Sign in\" i], a[aria-label*=\"Sign in\" i]",
+        "libraryAuthModal": "[role=\"dialog\"]",
+        "spacesLink": "a[href*=\"/spaces\"]"
+      },
+      "endpoints": {
+        "listAskThreads": "/rest/thread/list_ask_threads",
+        "spaces": "/rest/spaces",
+        "spaceThreadsCandidates": []
+      },
+      "pageSize": 20,
+      "notes": "Endpoint-first per S3: POST list_ask_threads with search_term + session cookies. Capability title-match until proven full-text. Spaces: rely on C (search_term may return Space-tagged threads). Per-Space thread routes gated off until live-proven (spaceThreadsCandidates empty; SPACE_THREAD_ENUMERATION_ENABLED=false). Former ladder B page-anchor scrape is not Spaces recovery and is omitted."
+    },
+    "claude": {
+      "origin": "https://claude.ai",
+      "loginUrl": "https://claude.ai/login",
+      "deepLinkPattern": "https://claude.ai/chat/{uuid}",
+      "selectors": {
+        "loginShell": "a[href*=\"/login\"], button[aria-label*=\"Continue with Google\" i], a[aria-label*=\"Continue with Google\" i], button[aria-label*=\"Continue with email\" i]",
+        "recentsSearch": "input[placeholder*=\"Search\" i], input[aria-label*=\"Search\" i]"
+      },
+      "endpoints": {
+        "organizations": "/api/organizations",
+        "chatConversations": "/api/organizations/{orgId}/chat_conversations",
+        "projects": "/api/organizations/{orgId}/projects",
+        "projectConversations": "/api/organizations/{orgId}/projects/{projectId}/conversations"
+      },
+      "pageSize": 20,
+      "projectListQuery": { "limit": 8 },
+      "notes": "Endpoint-first per S2: GET organizations → paginated chat_conversations (client title-match after full-page normalize) → Projects directory + per-project conversations (breadth-first page-1 then deepen, budget-capped). Deep link https://claude.ai/chat/{uuid}. Prefill not supported. Capability title-match. Soft caps: root ~100 / per-project ~60 still authorize empty by design (BL-024). Failure/budget/failed-project truncation → unavailable/timeout not empty (BL-022). DOM Recents search fallback deferred (BL-023). include_harmony_projects omitted until live-proven."
+    },
+    "gemini": {
+      "origin": "https://gemini.google.com",
+      "loginUrl": "https://gemini.google.com/app",
+      "deepLinkPattern": "https://gemini.google.com/app/{id}",
+      "selectors": {
+        "signIn": "a[href*=\"accounts.google.com\"], button[aria-label*=\"Sign in\" i], a[aria-label*=\"Sign in\" i]",
+        "signInToSaveActivity": "button, a, p, span, div",
+        "accountChip": "img[alt*=\"Google Account\" i], button[aria-label*=\"Google Account\" i], a[aria-label*=\"Google Account\" i]",
+        "historyItem": "a[href*=\"/app/\"]",
+        "historyScrollContainer": "",
+        "emptyHistoryState": ""
+      },
+      "endpoints": {},
+      "notes": "DOM-first per S4: no stable first-party history search endpoint at desk. Title-match on history rail links (/app/{id}). Prefill none — cascade deep link → https://gemini.google.com/app. Auth (S5): login_required when Sign in CTAs AND 'Sign in to save activity' are both visible without items/chip (full shell wins over a rail-only / empty-history heuristic). One-signal alone → unavailable. Owner signals: history items or account chip, or proven history rail without the full sign-in upsell (rail alone can reach empty without a chip). Soft reach ceiling: HISTORY_SCROLL_MAX_ROUNDS (~8) / HISTORY_ITEM_SOFT_CAP (~120) still authorize empty by design when the history rail (or empty-history state) is proven and the scanned window has no title match. Incomplete: budget exhausted mid-scan → timeout (history_budget_exhausted); rail never proven → unavailable (history_rail_missing) — never empty. Account chip alone does not prove the rail. Selectors stub-level pending live polish (BL-025). Gems/folders: any visible /app/ history links are collected; no invented Projects clone."
+    }
+  }
+}

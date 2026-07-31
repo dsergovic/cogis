@@ -1,0 +1,284 @@
+:root {
+  --cogis-bg: #f7f4ef;
+  --cogis-bg-accent: #e8efe8;
+  --cogis-ink: #1c1a17;
+  --cogis-ink-muted: #5c574e;
+  --cogis-line: #d5cfc4;
+  --cogis-accent: #0f6b4c;
+  --cogis-accent-ink: #f4fff9;
+  --cogis-warn: #8a4b12;
+  --cogis-surface: #fffdf9;
+  --cogis-radius: 10px;
+  --cogis-font: 'Segoe UI', 'Candara', 'Gill Sans', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  width: 380px;
+  min-height: 420px;
+  font-family: var(--cogis-font);
+  color: var(--cogis-ink);
+  background:
+    radial-gradient(120% 80% at 0% 0%, var(--cogis-bg-accent), transparent 55%),
+    linear-gradient(180deg, #fbf8f2 0%, var(--cogis-bg) 100%);
+}
+
+.cogis-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 420px;
+  padding: 14px 14px 10px;
+  gap: 10px;
+}
+
+.cogis-header {
+  display: flex;
+  align-items: baseline;
+}
+
+.cogis-brand {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.cogis-search {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.cogis-query {
+  width: 100%;
+  border: 1px solid var(--cogis-line);
+  border-radius: var(--cogis-radius);
+  padding: 10px 12px;
+  font: inherit;
+  background: var(--cogis-surface);
+  color: var(--cogis-ink);
+}
+
+.cogis-query:focus {
+  outline: 2px solid color-mix(in srgb, var(--cogis-accent) 45%, white);
+  outline-offset: 1px;
+}
+
+.cogis-search-btn {
+  border: none;
+  border-radius: var(--cogis-radius);
+  padding: 10px 14px;
+  font: inherit;
+  font-weight: 600;
+  background: var(--cogis-accent);
+  color: var(--cogis-accent-ink);
+  cursor: pointer;
+}
+
+.cogis-search-btn:hover {
+  filter: brightness(1.05);
+}
+
+.cogis-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--cogis-ink-muted);
+}
+
+.cogis-results {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 260px;
+}
+
+.cogis-group {
+  border: 1px solid var(--cogis-line);
+  border-radius: var(--cogis-radius);
+  background: color-mix(in srgb, var(--cogis-surface) 92%, white);
+  min-height: 100px;
+  display: flex;
+  flex-direction: column;
+}
+
+.cogis-group-header {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px 6px;
+  border-bottom: 1px solid color-mix(in srgb, var(--cogis-line) 70%, transparent);
+}
+
+.cogis-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--cogis-ink-muted);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+}
+
+.cogis-collapse-btn:hover {
+  background: color-mix(in srgb, var(--cogis-bg-accent) 55%, white);
+  color: var(--cogis-ink);
+}
+
+.cogis-collapse-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--cogis-accent) 45%, white);
+  outline-offset: 1px;
+}
+
+.cogis-collapse-icon {
+  display: inline-block;
+  font-size: 0.95rem;
+  transition: transform 120ms ease;
+}
+
+.cogis-group--collapsed .cogis-collapse-icon {
+  transform: rotate(-90deg);
+}
+
+.cogis-group--collapsed {
+  min-height: 0;
+}
+
+.cogis-group--collapsed .cogis-group-body {
+  display: none;
+}
+
+.cogis-group--collapsed .cogis-group-header {
+  border-bottom-color: transparent;
+}
+
+.cogis-group-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.cogis-capability {
+  font-size: 0.72rem;
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+  color: var(--cogis-accent);
+  border: 1px solid color-mix(in srgb, var(--cogis-accent) 35%, var(--cogis-line));
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.cogis-group-body {
+  padding: 8px 12px 12px;
+  flex: 1;
+}
+
+.cogis-group-status {
+  margin: 0 0 6px;
+  font-size: 0.84rem;
+  color: var(--cogis-ink-muted);
+  min-height: 1.2em;
+}
+
+.cogis-group--loading .cogis-group-status {
+  color: var(--cogis-ink);
+}
+
+.cogis-group--login_required .cogis-group-status,
+.cogis-group--unavailable .cogis-group-status,
+.cogis-group--timeout .cogis-group-status {
+  color: var(--cogis-warn);
+}
+
+.cogis-result-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cogis-result-item {
+  margin: 0;
+}
+
+.cogis-result-link {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-decoration: none;
+  color: inherit;
+  padding: 8px 8px;
+  border-radius: 8px;
+}
+
+.cogis-result-link:hover {
+  background: color-mix(in srgb, var(--cogis-bg-accent) 55%, white);
+}
+
+.cogis-result-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.cogis-result-date {
+  font-size: 0.75rem;
+  color: var(--cogis-ink-muted);
+}
+
+.cogis-login-link {
+  color: var(--cogis-accent);
+  font-weight: 600;
+}
+
+.cogis-footer {
+  margin-top: auto;
+  padding-top: 4px;
+}
+
+.cogis-footnote {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--cogis-ink-muted);
+}
+
+.cogis-debug-foot {
+  margin: 6px 0 0;
+  font-size: 0.72rem;
+}
+
+.cogis-debug-link {
+  color: var(--cogis-ink-muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.cogis-debug-link:hover,
+.cogis-debug-link:focus-visible {
+  color: var(--cogis-accent);
+}
+
+.cogis-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

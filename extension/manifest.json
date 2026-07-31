@@ -1,0 +1,103 @@
+{
+  "manifest_version": 3,
+  "name": "Cogis — AI Search",
+  "version": "0.6.0",
+  "description": "Search your own ChatGPT, Perplexity, Claude, and Gemini conversation history from a single popup and open deep links. Dev-unpacked V1.",
+  "action": {
+    "default_title": "Cogis — AI Search",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "assets/icons/icon-16.png",
+      "48": "assets/icons/icon-48.png",
+      "128": "assets/icons/icon-128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "icons": {
+    "16": "assets/icons/icon-16.png",
+    "48": "assets/icons/icon-48.png",
+    "128": "assets/icons/icon-128.png"
+  },
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://www.perplexity.ai/*",
+    "https://perplexity.ai/*",
+    "https://claude.ai/*",
+    "https://gemini.google.com/*",
+    "https://cogis.ai/packs/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
+      "js": ["content/chatgpt.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.perplexity.ai/*", "https://perplexity.ai/*"],
+      "js": ["content/perplexity.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://claude.ai/*"],
+      "js": ["content/claude.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://gemini.google.com/*"],
+      "js": ["content/gemini.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "lib/chatgpt-adapter.js",
+        "lib/results.js",
+        "lib/platforms.js",
+        "lib/timeouts.js",
+        "lib/selectors/loader.js",
+        "lib/selectors/local-pack.js"
+      ],
+      "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"]
+    },
+    {
+      "resources": [
+        "lib/perplexity-adapter.js",
+        "lib/results.js",
+        "lib/platforms.js",
+        "lib/timeouts.js",
+        "lib/selectors/loader.js",
+        "lib/selectors/local-pack.js"
+      ],
+      "matches": ["https://www.perplexity.ai/*", "https://perplexity.ai/*"]
+    },
+    {
+      "resources": [
+        "lib/claude-adapter.js",
+        "lib/results.js",
+        "lib/platforms.js",
+        "lib/timeouts.js",
+        "lib/selectors/loader.js",
+        "lib/selectors/local-pack.js"
+      ],
+      "matches": ["https://claude.ai/*"]
+    },
+    {
+      "resources": [
+        "lib/gemini-adapter.js",
+        "lib/readiness.js",
+        "lib/results.js",
+        "lib/platforms.js",
+        "lib/timeouts.js",
+        "lib/selectors/loader.js",
+        "lib/selectors/local-pack.js"
+      ],
+      "matches": ["https://gemini.google.com/*"]
+    }
+  ]
+}

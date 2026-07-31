@@ -1,0 +1,12 @@
+node_modules/
+.DS_Store
+Thumbs.db
+*.log
+.env
+.env.*
+!.env.example
+coverage/
+.vscode/
+.idea/
+*.har
+!tests/fixtures/**/*.json

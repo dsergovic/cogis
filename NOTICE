@@ -1,0 +1,27 @@
+# NOTICE — Cogis — AI Search
+
+## Privacy posture
+
+- Queries are processed locally and only sent into lab surfaces the user already uses (ChatGPT, Perplexity, Claude, Gemini).
+- Cogis does not operate a search backend that receives query text.
+- Session cookies and access tokens are never copied into extension storage or transmitted to Cogis infrastructure. Tokens retrieved from the lab session endpoint are held in memory for the in-flight request only.
+- Cogis does not scrape, index, store, or redistribute conversation message bodies.
+- Nothing is cached between searches; each query re-hits the lab.
+- Optional selector-manifest fetch from `cogis.ai` (M5) carries no query text — only a data-only JSON pack of selectors / URL patterns.
+- Optional maintainer anonymous ping (M6) is **off by default** and opt-in. When enabled, the payload may include only platform id, selector pack version, error class / code, and optionally the extension version — **never** query text, titles, cookies, or message bodies. This build does not point at a production ping endpoint; enabling one is a human escalation.
+- The M6 debug panel shows per-platform latency, hit counts, last status, and selector pack version only. It does not display or store message bodies or query text. Tiny `chrome.storage.local` prefs hold the ping opt-in flag only.
+
+## ToS posture
+
+Cogis drives the user's own logged-in sessions to retrieve conversation **pointers** the user already owns. It does not:
+
+- Bypass authentication, MFA, or rate limits.
+- Impersonate the user against any lab's servers.
+- Store, redistribute, or resell conversation content.
+- Scrape or index conversation bodies.
+
+The extension operates under the user's own credentials, in the user's own browser, at the user's own request.
+
+## Distribution
+
+V1 is **dev-unpacked** only: load the `extension/` directory via `chrome://extensions` (Developer mode → Load unpacked). Chrome Web Store listing is a human decision and is not performed by automated agents.

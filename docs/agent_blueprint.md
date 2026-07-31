@@ -6,8 +6,9 @@
 **License:** MIT  
 **Framework:** [Full-Lifecycle Agentic Software Engineering v1.1.0](https://github.com/dsergovic/research/blob/main/docs/Full-Lifecycle%20Agentic%20Software%20Engineering.md)  
 **Phase 0 input:** [`docs/cogis-ai-search-pre-blueprint.md`](./cogis-ai-search-pre-blueprint.md) **v0.2.0** (locked; do not re-litigate)  
-**Status:** Phase 1 blueprint — spikes S1–S6 resolved; ready for Phase 2 hand-off after human merge  
-**Version:** 0.2.0  
+**Status:** Phase 1 blueprint — spikes S1–S6 resolved; ready for Phase 2 hand-off  
+**Version:** 0.3.0  
+**Integration branch:** `dev` (day-to-day working area; feature PRs target `dev`)  
 **Spike findings:** [`docs/spikes/`](./spikes/)
 
 ---
@@ -163,8 +164,9 @@ Outbound contacts (not “our API”):
 | Perplexity | `POST /rest/thread/list_ask_threads` + `search_term`; session cookies | **title-match** (until proven full-text) | `https://www.perplexity.ai/search/{slug}` | `https://www.perplexity.ai/search?q=` | Spaces via S3 ladder |
 | Claude | Org session APIs under `/api/organizations/{orgId}/…`; DOM Recents fallback | **title-match** | `https://claude.ai/chat/{uuid}` | No stable URL | Projects required |
 | Gemini | **DOM-first** history; endpoint if live Network reveals one | **title-match** | `https://gemini.google.com/app/{id}` | None | Flat history + any UI containers |
+| Grok **(M7)** | **TBD — S7 open.** DOM-first unless S7 live-proves a session endpoint | **title-match** default; `full-text` only if S7 proves it | **TBD — S7 open**; `null` + origin fallback until the pattern is proven | TBD | TBD |
 
-Full write-ups: `docs/spikes/s1-…` through `s4-…`. Auth matrix: `s5-…`. Long history: `s6-…`.
+Full write-ups: `docs/spikes/s1-…` through `s4-…`. Auth matrix: `s5-…`. Long history: `s6-…`. Grok: `s7-…` (**open stub** — every `TBD` above is filled from live investigation before M7 can claim its AC; see §10 M7).
 
 **Residual risk (not open product questions):** brittle CSS selectors and occasional header/param drift. Handle via M-milestone fixtures + M5 data-only pack — do not reopen S1–S6 unless a strategy in the table fails entirely.
 
@@ -212,10 +214,13 @@ Implementers define exact payloads in code (Tier 1/2) but must preserve these ro
 
 ChatGPT, Perplexity, Claude, Gemini. **No DeepSeek.**
 
+**Plus Grok from M7** — the V1 matrix is these four labs **+ Grok (M7)**, added by the human-approved §10 M7 section (see escalation #10). No other platform is implied.
+
 ### 4.2 Capability policy
 
 - **Full-text** where the platform supports it — **ChatGPT = full-text** (S1 + OpenAI Help).
 - **Title-match** for **Perplexity, Claude, Gemini** (S2–S4) unless a later human-amended finding upgrades a label.
+- **Grok (M7): title-match by default**, upgraded to full-text only if S7 proves a real full-text history search.
 - Per-platform capability label on each results group.
 - Popup footnote (always visible in results chrome):  
   **“Some AIs do not support full-text search.”**
@@ -235,6 +240,7 @@ Chats only inside Projects/Spaces must still be findable. This is real V1 scope 
 | M2 | Perplexity | Default history + **Perplexity Spaces** |
 | M3 | Claude | Default history + **Claude Projects** |
 | M4 | Gemini | Default history + Gemini history containers as characterized by S4 |
+| M7 | Grok | Default history + any Grok container equivalent **as characterized by S7** — do not invent a Projects clone if the product has none |
 
 ### 4.4 Result click cascade
 
@@ -266,7 +272,7 @@ Per-platform flags are locked in §3.6.1 / spike findings. Behavioral acceptance
 
 ### 4.7 Results UX
 
-- Grouped by platform; UI order: **ChatGPT → Perplexity → Claude → Gemini** (matches milestone order; groups for platforms not yet implemented may be omitted until their milestone).
+- Grouped by platform; UI order: **ChatGPT → Perplexity → Claude → Gemini → Grok (M7)** (matches milestone order; groups for platforms not yet implemented may be omitted until their milestone).
 - Layout reserved up front so the popup does not jump as groups fill.
 - Per-group states: `idle` | `loading` | `ready` | `empty` | `login_required` | `unavailable` | `timeout`.
 - Each result row: platform affordance (group header), **title**, **date** (when known).
@@ -471,6 +477,7 @@ Chrome Web Store listing is a **human escalation** after reviewing then-current 
 | M1–M4 | Lab origins only (via content script / page context / session cookies) |
 | M5 | Labs + `cogis.ai` selector-manifest HTTPS fetch (data-only JSON) |
 | M6 | Labs + optional opt-in ping endpoint (URL enable = escalation) |
+| M7 | Same as M6, plus the **Grok origins proven in S7** (narrow host permissions only) |
 
 ---
 
@@ -486,6 +493,7 @@ Spikes are **owned by Human + Perplexity** (framework §3.5 Tier 3). **S1–S6 w
 | S4 Gemini | [s4-gemini-history-contract.md](./spikes/s4-gemini-history-contract.md) | **Resolved** — DOM-first title-match + `/app/{id}` |
 | S5 Auth | [s5-auth-state-detection.md](./spikes/s5-auth-state-detection.md) | **Resolved** — per-platform predicate matrix |
 | S6 Long history | [s6-long-history-reach.md](./spikes/s6-long-history-reach.md) | **Resolved** — reach matrix |
+| S7 Grok | [s7-grok-history-contract.md](./spikes/s7-grok-history-contract.md) | **Open (stub)** — history surface, capability, deep link, and origins all `TBD` pending live investigation. Filled by Human + Perplexity, **or** as the first task inside M7 (§10) when M7 is handed off with the stub still open |
 
 **Evidence bar:** official docs + logged-out live UI (2026-07-28) + corroborated open-source reverse-eng. Local logged-in Comet was unavailable during authoring; residual risk is selector/header drift (M5 + milestone fixtures), not open strategy questions.
 
@@ -503,8 +511,8 @@ Spikes are **owned by Human + Perplexity** (framework §3.5 Tier 3). **S1–S6 w
 
 **Global constraints for every milestone**
 
-- Feature branch only; never commit implementation to `main`.  
-- Agent opens PR; **human merges**.  
+- **Branching:** cut feature branches from `dev`; open PRs **to `dev`**. Never commit implementation directly to `dev` or `main`. Do not open milestone PRs to `main`.  
+- Agent opens PR; **human merges** (into `dev`).  
 - Stop-loss: 5 consecutive attempts on one error; milestone budget: **25** total debugging attempts (or human-stated cap). On trip: `agent-stuck/mN-yyyy-mm-dd` + summary.  
 - Note Tier 2 decisions under PR **Choices made**.  
 - No new dependencies without escalation.  
@@ -660,6 +668,42 @@ Spikes are **owned by Human + Perplexity** (framework §3.5 Tier 3). **S1–S6 w
 
 ---
 
+### M7 — Grok
+
+**Goal:** Add a **fifth** lab — Grok (xAI) — to the popup fan-out, so a query returns Grok history pointers alongside ChatGPT, Perplexity, Claude, and Gemini.
+
+**Human-approved platform addition.** §12 escalation item #10 blocks an agent from adding a platform. This section **is** the amendment that authorizes Grok, and it authorizes Grok only. Any further platform still stops at #10.
+
+**Depends on:** **S7 Grok history contract** (see §9) plus S5/S6. S7 is authored by Human + Perplexity like every other spike; if it is still an open stub when M7 is handed off, writing the finding from live investigation is the **first task inside M7**, under the same two-tier rule that governs codified tests — the agent may write the finding it then implements against, but it may not decide anything on the §12 escalation list while doing so.
+
+#### M7 scope
+
+- Platform id **`grok`** in `lib/platforms.js` (label, capability, origin, loginUrl, hostPatterns) and in `PLATFORM_ORDER`.
+- A Grok block in the data-only selector pack, a `content/grok.js` content script, and a `lib/grok-adapter.js` adapter following the M1–M4 shape.
+- Popup result group/card for Grok, with its capability label; debug-panel stats row if the M6 panel enumerates platforms explicitly.
+- `host_permissions` and `web_accessible_resources` **narrowly** scoped to the origins S7 proves. Widening toward `<all_urls>` or unrelated origins remains escalation #8.
+- Unit tests for the new pure logic and **redacted** fixtures under `tests/fixtures/grok/`.
+
+#### M7 out of scope
+
+- Enabling the M6 maintainer ping against a production endpoint (still escalation #9).
+- Unrelated refactors of the M1–M6 adapters, popup, or orchestration.
+- Fixing **BL-025** (Gemini live selector polish) — unless the fix is a trivial change to shared infrastructure that M7 touches anyway, in which case note it in Choices made.
+
+#### M7 behavioral acceptance criteria
+
+1. **Prior milestones green:** all M1–M6 behavioral AC still hold with Grok present.  
+2. **Honest terminal states:** a Grok search resolves to ready pointers, `empty`, `login_required`, `unavailable`, or `timeout` under the same §4.5/§4.7 rules as the other labs — an unproven, unreached, or failed history scan is `unavailable`/`timeout`, **never** `empty`.  
+3. **Capability label matches the proven surface:** the group label states what S7 actually proved. Default is **`title-match`**; **`full-text`** only if S7 demonstrates a real full-text history search.  
+4. **Deep link only when proven:** `deepLinkUrl` is set only for a URL pattern S7 confirmed. Otherwise it stays `null` and the click cascade falls back to the Grok origin home/app surface (§4.4). No fabricated deep links.  
+5. **Auth mapping per S5:** logged-out yields **“Please log in to Grok”**; `403` without a login shell is `unavailable`, not logged-out. No logged-out state is reported as a false `empty`.  
+6. **Reach honesty per S6:** where the adapter is DOM-driven, any soft scroll/scan ceiling is documented as an `empty`-by-design platform limit, **textually separate** from failure truncation, which must not report `empty`.  
+7. **Five-platform fan-out** respects the 8s per-platform budget, the ~15s wall, and in-flight cancel: a superseded `requestId` is dropped across all five groups, and the added group does not push the wall.  
+8. **README** capability matrix includes Grok with its strategy, capability, deep-link, and prefill flags.  
+9. **Tooling green** (`npm test`, `npm run lint`, `npm run format:check`); fixtures redacted of cookies and tokens per §3.7.
+
+---
+
 ## 11. Testing strategy (sites we do not control)
 
 | Layer | V1 approach |
@@ -685,7 +729,7 @@ The executing agent **stops and summarizes** rather than deciding:
 7. **Runtime target change** (Firefox-first, Electron, hosted web app, companion server).  
 8. **Host permission widening** to `<all_urls>` or unrelated origins.  
 9. **Enabling** maintainer ping against a production endpoint or expanding ping payload.  
-10. **Adding or removing a platform** (including DeepSeek) or reordering product scope vs this blueprint.  
+10. **Adding or removing a platform** (including DeepSeek) or reordering product scope vs this blueprint. **Approved exception: Grok**, and only via the human-approved **§10 M7 — Grok** section of this blueprint. That section is the amendment; it does not generalize. Any other platform add or removal still stops here.  
 11. **Dropping Projects/Spaces scope** for a platform without a human-approved spike finding + blueprint amendment.  
 12. **Public GitHub visibility flip** or org transfer.  
 13. **Softening or deleting** pre-approved behavioral acceptance criteria or approved codified tests to get green.  
@@ -732,5 +776,7 @@ Operator will provide hand-off prompts.
 
 | Version | Date | Change |
 | --- | --- | --- |
+| 0.3.0 | 2026-07-30 | **M7 — Grok amendment.** Added the §10 **M7 — Grok** section (goal, scope, out of scope, nine behavioral AC) authorizing a fifth lab, and recorded it in §12 escalation #10 as the **approved exception** — no other platform add is implied. Additive matrix updates only: §3.6.1 Grok row (all `TBD` pending S7), §4.1 four labs **+ Grok (M7)**, §4.2 title-match default, §4.3 M7 container row, §4.7 group order gains Grok, §8.3 M7 outbound row, §9 S7 listed **open (stub)**. S7 is Human/Perplexity-owned or the first task inside M7 if still open at hand-off. |
+| 0.2.1 | 2026-07-28 | Integration branch retarget: day-to-day working area is `dev`. Feature branches cut from `dev`; milestone PRs target `dev` (not `main`). Header + global milestone constraints updated. |
 | 0.2.0 | 2026-07-28 | Spikes S1–S6 resolved and folded in (§3.6.1 contract table; §9 marked resolved). Capability labels locked (ChatGPT full-text; others title-match). Click cascade flags locked per platform. §15 collapsed to operator-owned hand-off pointer (no path). M1–M4 no longer gated on open spikes. Residual risk = selector/header drift only. Operator hand-off prompts authored alongside this blueprint as a separate human-only doc. |
 | 0.1.0 | 2026-07-28 | Initial Phase 1 agent blueprint under framework v1.1.0. Compiled from pre-blueprint v0.2.0 plus Phase 1 interview locks: M1 includes ChatGPT Projects; Spaces/Projects inside each platform milestone; click cascade deep-link → prefill → lab home; query UX Enter/Search only with empty clear+hint and in-flight cancel; timeouts 8s/15s; stack HTML/CSS/JS + ESLint + Prettier + vitest; display name Cogis — AI Search; M5 data-only remote selector pack; M6 debug panel + opt-in anonymous ping designed off-by-default; behavioral AC for M1–M6; spikes S1–S6 formalized. Authored in Perplexity Computer session for Phase 1 (no application code). |
