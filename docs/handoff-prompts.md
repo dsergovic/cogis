@@ -1,17 +1,18 @@
 # Cogis — Hand-Off Prompts (Phase 2)
 
-**This file is the official source of truth for all Cogis hand-off prompts — implementer and reviewer, M1 through M7.**
+**This file is the official source of truth for all Cogis hand-off prompts — implementer and reviewer, M1 through M7, plus M8 sub-milestones.**
 
 Do not keep parallel copies of these prompts in chat memory, session notes, or a scratch doc. If a prompt needs to change, change it **here** and reference it. If a chat contains a prompt that disagrees with this file, this file wins.
 
 Framework: [Full-Lifecycle Agentic Software Engineering v1.1.0](https://github.com/dsergovic/research/blob/main/docs/Full-Lifecycle%20Agentic%20Software%20Engineering.md)  
 Blueprint: `docs/agent_blueprint.md`  
-Spikes: `docs/spikes/` (S1–S6 resolved 2026-07-28; **S7 Grok open** — stub only, live fill-in required)  
+M8 addendum: `docs/agent_blueprint-m8-web-surface.md` (authorizes the M8 web search surface; source of truth for M8 sub-milestones)  
+Spikes: `docs/spikes/` (S1–S6 resolved 2026-07-28; **S7 Grok open**, **S8.1–S8.3 open** — stub only, live fill-in required)  
 Backlog: `docs/backlog.md`
 
 ## How this file is used: attach once, paste one paragraph
 
-**Attach this file in Cursor** alongside `docs/agent_blueprint.md` and the milestone's spike findings. Then paste **only** the short ready-to-paste block from §5 for the one milestone you are handing off.
+**Attach this file in Cursor** alongside `docs/agent_blueprint.md` (and `docs/agent_blueprint-m8-web-surface.md` for M8 sub-milestones) and the milestone's spike findings. Then paste **only** the short ready-to-paste block from §5 for the one milestone you are handing off.
 
 The operator's clipboard work is one paragraph. Everything long — the Definition of Done (§2), the self-check tables (§3), the known traps (§4) — stays **in this file** as the agent's checklist. The agent reads those sections from the attached file and copies the relevant §3 table into the PR body itself. **The operator never pastes §2, §3, or §4 into a chat.**
 
@@ -47,6 +48,7 @@ Two rules survive from the older operator-only posture:
    - M3: `@docs/spikes/s2-claude-recents-contract.md` + S5/S6
    - M4: `@docs/spikes/s4-gemini-history-contract.md` + S5/S6
    - M7: `@docs/spikes/s7-grok-history-contract.md` + S5/S6 — attach the file even while it is an open stub; the §5.7 prompt tells the agent to author the finding from live investigation as task 1 if it is still `TBD`.
+   - M8a: `@docs/agent_blueprint-m8-web-surface.md` `@docs/spikes/s8-1-postmessage-handshake-contract.md` + S5 (S6 is not relevant — no history reach). **Attach the addendum, not the parent blueprint alone** — the addendum is the M8 source of truth. S8.1 attaches even while it is an open stub; the §5.8 prompt tells the agent to author the finding from live investigation as task 1 if it is still `TBD`.
    - M5/M6: no spikes — the two attachments above are the whole set (plus M5 notes in blueprint §10).
 5. Enable terminal auto-run for `npm`, `node`, `git` as you prefer; deny force-push and merge to `dev` or `main`.
 6. Paste **only** the short §5.x block for this one milestone. Do **not** paste §2, §3, or §4 by hand — the block tells the agent to read them from the attached file. Step away.
@@ -93,6 +95,16 @@ M5 (data-only selector pack) and M6 (debug panel + optional ping) have no lab fa
 
 **M7 (Grok) is not one of these.** It adds a fifth lab, so it is a **platform** milestone exactly like M1–M4: full lab fan-out, auth mapping, container coverage, and the `empty`-honesty rules in their original form. M7 uses the **§3.1** table, not §3.2, and the §4 traps apply to it in full.
 
+### 2.6 Where M8 sub-milestones sit
+
+M8 sub-milestones (M8a–M8e) are **surface** milestones, not platform ones. They introduce the `cogis.ai/` web surface and the `postMessage` bridge that backs it, but they add **zero** platforms and change **zero** adapters (parent blueprint §4.1 platform set stays frozen through M8; adapter changes during M8 are a separate hotfix branch, not M8 work — addendum §6 global constraint).
+
+They use the **§3.2 (data/UI) self-check table as the primary rubric** — the same honesty rules that bind M5/M6 (fail-closed, default-off, data-only) bind the bridge (drop-and-count on origin/nonce/envelope mismatch, `WEB_SEARCH_SURFACE_ENABLED=false` produces zero observable effect, no page-side execution of anything the bridge sends).
+
+On top of §3.2, every M8 sub-milestone also completes the **§3.3 M8 bridge / surface checklist** below. §2.1, §2.2, and §2.4 still apply in full; the §4 Known traps for platform milestones do **not** apply to M8 sub-milestones except where a live-behavior regression against M1–M7 shows up in §3.2 SD-5.
+
+**Source of truth for M8 behavioral AC is `docs/agent_blueprint-m8-web-surface.md` (the M8 addendum), not the parent blueprint** — parent blueprint §§3, 6, 8, 9, 10, 12, 14 are pending a future `v0.4.0` reconciliation. When the addendum and the parent disagree on anything M8-related, the addendum wins until reconciliation lands.
+
 ---
 
 ## 3. Self-check tables
@@ -118,16 +130,33 @@ M5 (data-only selector pack) and M6 (debug panel + optional ping) have no lab fa
 | SC-13 | **Spike residual risks** — each residual risk from the attached spike(s) is addressed in Choices made, with a backlog ID where deferred | |
 | SC-14 | **Privacy** — no auth token or message-body persistence; the normalizer drops body fields when present in a raw lab payload, with a fixture proving it | |
 
-### 3.2 Data / UI milestones (M5–M6)
+### 3.2 Data / UI milestones (M5–M6) and M8 sub-milestones (primary rubric)
 
 | # | Check | Evidence |
 | --- | --- | --- |
-| SD-1 | **Fail-closed / default-off proven by test** — M5: remote unreachable or malformed ⇒ local pack; M6: ping off ⇒ zero network calls | |
-| SD-2 | **Data-only, no execution** — no `eval`, no `new Function`, no dynamic remote import; executable-looking payload keys are rejected (M5) | |
-| SD-3 | **Privacy** — query text is never stored in `chrome.storage` or transmitted; the panel shows no message bodies (M6) | |
-| SD-4 | **Diagnosability** — pack version, per-platform status, and `errorCode` are visible to the surface this milestone owns | |
-| SD-5 | **Prior-milestone regression** — M1–M4 behavior unchanged with the panel closed and ping off | |
-| SD-6 | **Escalation items not silently decided** — anything on the blueprint escalation list (enabling a production ping endpoint, widening the pack beyond data-only) was escalated, not chosen | |
+| SD-1 | **Fail-closed / default-off proven by test** — M5: remote unreachable or malformed ⇒ local pack; M6: ping off ⇒ zero network calls; **M8: `WEB_SEARCH_SURFACE_ENABLED=false` ⇒ zero observable effect from any `webBridge:*` message** | |
+| SD-2 | **Data-only, no execution** — no `eval`, no `new Function`, no dynamic remote import; executable-looking payload keys are rejected (M5); **the bridge never eval/execs anything from the page and never posts anything to the page until a valid `COGIS_HELLO` (M8)** | |
+| SD-3 | **Privacy** — query text is never stored in `chrome.storage` or transmitted anywhere the popup wouldn't already send it; the panel shows no message bodies (M6); **`cogis.ai` origin never receives query text; the bridge never exposes cookies, tokens, DOM contents, or adapter internals to the page (M8)** | |
+| SD-4 | **Diagnosability** — pack version, per-platform status, and `errorCode` are visible to the surface this milestone owns; **M8: bridge drop counters (origin/nonce/malformed) visible in the M6 debug panel from M8d onward, or in the console before then** | |
+| SD-5 | **Prior-milestone regression** — M1–M4 (and M6, and M7 if landed) behavior unchanged with the panel closed and ping off; **for M8: unchanged with the flag off, and unchanged in the popup surface with the flag on** | |
+| SD-6 | **Escalation items not silently decided** — anything on the blueprint escalation list (enabling a production ping endpoint, widening the pack beyond data-only, **widening the bridge `matches` beyond `https://cogis.ai/*`, adding a `fetch` from the page, relaxing the page CSP**) was escalated, not chosen | |
+
+### 3.3 M8 bridge / surface checklist (in addition to §3.2)
+
+| # | Check | Evidence |
+| --- | --- | --- |
+| SB-1 | **Origin lock is string equality** — `event.origin === "https://cogis.ai"` on every inbound message on both sides; single-value allowlist; no glob, no substring, no regex; every mismatch drops silently and increments `originDropCount` | |
+| SB-2 | **Nonce echo required post-handshake** — session nonce set at `COGIS_HELLO`, echoed on every subsequent message; mismatch drops and increments `nonceDropCount`; the nonce is neither logged nor persisted | |
+| SB-3 | **Envelope allowlist** — `type` present and in the addendum §3.9 allowlist; unknown/missing/malformed drops and increments `malformedDropCount`; oversized payloads beyond the Tier 2 cap drop | |
+| SB-4 | **No `postMessage("*")` anywhere** — every reply passes the explicit `"https://cogis.ai"` target-origin argument; grep-level check acceptable as evidence | |
+| SB-5 | **`event.source === window` on page side; `sender.tab.url.startsWith("https://cogis.ai/")` on SW side** — both boundaries enforce a second origin check independent of the bridge | |
+| SB-6 | **Bridge `matches` is apex-only** — `https://cogis.ai/*` only; not `https://www.cogis.ai/*`, not any subdomain, not any other origin | |
+| SB-7 | **WAR graph is complete** — the WAR-guard unit test (M1 pattern) fails if any transitively-imported file used by `web-bridge.js` is missing from `web_accessible_resources` | |
+| SB-8 | **Cancel isolation across the bridge** — a `WEB_BRIDGE_CANCEL` for a superseded `requestId` drops in-flight chunks across every platform group, identical to popup cancel; a newer request is not torn down by a stale cancel | |
+| SB-9 | **Timeout budgets unchanged** — five-platform (or four-platform, depending on M7 status) fan-out via the bridge respects the same 8s/15s budgets as the popup path; no new timeout paths introduced | |
+| SB-10 | **Popup surface unchanged** — with the flag on **or** off, the popup fan-out is byte-identical to pre-M8 behavior; the M1–M7 self-check tables from the shipping milestones still hold | |
+| SB-11 | **Addendum spike residual risks** — each residual risk from the attached S8.x spike(s) is addressed in Choices made, with a backlog ID where deferred | |
+| SB-12 | **Escalation items not silently decided** — widening `matches` beyond apex, adding any page-side `fetch`, adding page-side telemetry, or introducing a bundler for `web/` was escalated, not chosen (addendum §10) | |
 
 ---
 
@@ -220,7 +249,38 @@ The S7 spike ships as an **open stub**, so this block does double duty: it autho
 >
 > Satisfy **§2** in full and copy the **§3.1 platform self-check table** into the PR body yourself with every evidence cell filled — real test names or `file:line`, `unverified` + a `BL-0xx` row where you could not prove it. The PR body carries **Choices made** (including every residual risk from S7/S5/S6) plus that table. Open a PR to `dev`. **Do not merge.** I am stepping away.
 
-### 5.8 Optional: live selector polish (human + short Cursor assist)
+### 5.8 M8a — Bridge protocol + content script (flag-gated, no page)
+
+M8a is the **first M8 sub-milestone** and the first **surface** milestone in the project. Escalation-list item #14 (adding a hosted surface) is satisfied by `docs/agent_blueprint-m8-web-surface.md` and by nothing else. If the addendum is missing from the attached files, stop and escalate instead of pasting this block.
+
+The S8.1 spike ships as an **open stub**, so this block does double duty: it authorizes the agent to author the finding from live investigation before implementing against it.
+
+> Read `docs/agent_blueprint-m8-web-surface.md` — the M8 addendum — in full, especially **§3.9 (bridge protocol contract)** and **§6 M8a (behavioral AC)**. That addendum is the source of truth for M8; when it disagrees with `docs/agent_blueprint.md`, the addendum wins. Also read `docs/spikes/s8-1-postmessage-handshake-contract.md`, `docs/spikes/s5-auth-state-detection.md`, and — in the attached `docs/handoff-prompts.md` — **§2 (Definition of Done, especially §2.6 for where M8 sub-milestones sit)**, **§3.2 (primary rubric) and §3.3 (M8 bridge / surface checklist)**, and **§4 (Known traps)** — note that §4 traps apply to M8 sub-milestones only via SD-5 (prior-milestone regression), not directly. Do not ask me to paste those sections; read them from the files. Implement **Milestone 8a only** — ignore the other milestones in §5 of that file, including the other M8 sub-milestones. Operate under the Mandatory Autonomy Guardrails and Implementer Independence tiers in the blueprint framework: branch `feature/agent-m8a-bridge-protocol` cut from `dev`; 5-attempt stop-loss; 25-attempt milestone budget; addendum §6 M8a behavioral AC are binding. **Never invent a bridge field, timing tolerance, or drop counter you did not observe live** — an unobserved rule stays `TBD` in the spike and behavior falls back to the honest default (origin string equality, session nonce, drop-and-count).
+>
+> **Task 1 — the spike, if it is still open.** `docs/spikes/s8-1-postmessage-handshake-contract.md` is a stub with `TBD` fields. If it has not been filled in, your **first task** is to write a short spike finding from **live investigation** in the same shape as `s4-gemini-history-contract.md`, covering the fields listed in the S8.1 "Decisions to lock for M8a" table (handshake envelope both directions, origin string, `event.source`/`sender.tab.url` checks, `document_idle` timing on ≥3 cold loads, isolated-world module import graph, nonce format and lifetime) plus the origin-lock and envelope-validation drop rows the stub enumerates. Commit that finding, then implement against it.
+>
+> **Implementation — M8a is the extension side of the bridge only. No `web/` subtree. No DNS. No page.**
+>
+> Concretely:
+>
+> - New content script `extension/content/web-bridge.js` matched **only** to `https://cogis.ai/*` (apex; not `www`, not any subdomain, not any other origin). Sole channel between the (future) page and the service worker.
+> - `extension/manifest.json` gains `https://cogis.ai/*` in `host_permissions` and a new `content_scripts` block for `web-bridge.js`. Widening `host_permissions` beyond that single origin is escalation #8, not a Tier 2 choice.
+> - `extension/lib/flags.js` (new or extended) with `WEB_SEARCH_SURFACE_ENABLED = false` as the default. When `false`, the bridge and the SW handlers must hard-return with **zero observable effect** (no adapter call, no counter increment beyond the drop counter, no console noise). Prove this by test — that is SD-1 for M8.
+> - Service worker gains `webBridge:search` and `webBridge:cancel` message handlers that are **thin wrappers over the existing popup message contract**. **No adapter changes** — addendum §6 global constraint. If a live-behavior discrepancy in an adapter shows up while wiring the bridge, that is a separate hotfix branch outside M8, not something you fix inside M8a.
+> - Extend the WAR-guard unit test (the M1 pattern) so it fails if any file transitively imported by `web-bridge.js` is missing from `web_accessible_resources`. Populate the WAR entry with only what the bridge actually imports.
+> - Add unit tests for: origin allowlist (accept `https://cogis.ai`, drop each row in the S8.1 origin-lock table), nonce echo, envelope allowlist (accept the addendum §3.9 types, drop unknown/malformed), request-ID cancel via the bridge (superseded id drops across all platform groups), and the drop counters incrementing on each mismatch case. Use `postMessage` fixtures under `tests/fixtures/web-bridge/` — redacted like every other fixture.
+>
+> **Do not build the page.** The addendum §3.9 explicitly requires that the bridge protocol contract mirror in `web/assets/js/bridge-client.js` on the page side, but that mirror lands in **M8b, not M8a**. M8a is flag-gated with no page at all. If you find yourself creating anything under `web/`, stop — that is scope creep and belongs in M8b.
+>
+> **Do not touch adapters.** If a test in `content/*.js` or `lib/*-adapter.js` needs to be updated to accommodate the new bridge message types, that is a bug in the wrapper design — the wrapper is thin over the popup contract by definition. Fix the wrapper, not the adapter.
+>
+> **Keep M1–M7 (whatever has landed) green.** With the flag `false`, the popup surface must be byte-identical to pre-M8. With the flag flipped to `true` **in a test harness only**, popup fan-out must still respect 8s/15s budgets and cancel semantics; a fifth (or fourth) group must not push the wall.
+>
+> Work the **§3.3 M8 bridge / surface checklist** as an explicit checklist before opening the PR — SB-1 through SB-12 are the shape of the review. §4 Known traps apply to M8a only via SD-5 (do not regress M1–M7).
+>
+> Satisfy **§2** in full. Copy the **§3.2 table (primary rubric, extended with M8 rows)** and the **§3.3 M8 bridge / surface checklist** into the PR body yourself with every evidence cell filled — real test names or `file:line`, `unverified` + a `BL-0xx` row where you could not prove it. The PR body carries **Choices made** (including every residual risk from S8.1 and any relevant S5/S6 residuals) plus both tables. Open a PR to `dev`. **Do not merge.** I am stepping away.
+
+### 5.9 Optional: live selector polish (human + short Cursor assist)
 
 If a platform milestone fails on live DOM/header drift, do **not** reopen product spikes. Run a short fix branch:
 
@@ -312,6 +372,7 @@ Reviewers never merge and never approve. After pass 2 is clean, the operator run
 | M5 | Optional local static host or mocked fetch for manifest tests |
 | M6 | Same as M1–M4 |
 | M7 | Same as M1–M4 — a **logged-in Grok session** in the same browser profile (the S7 spike cannot be filled in, and M7 cannot be smoked, from a logged-out account) |
+| M8a | Same base as M1–M4 for the unpacked extension; **no `cogis.ai` DNS yet** (M8a is flag-gated with no page). Filling S8.1 needs a local page that loads from an origin string equal to `https://cogis.ai` — a locally-hosted `127.0.0.1:8080` will not exercise the origin-lock codepath. Options: a `HOSTS` entry mapping `cogis.ai` to `127.0.0.1` with a self-signed cert on `https://cogis.ai`, a preview URL served from a temporary GitHub Pages deploy with the DNS pointing there, or the addendum's future `web/` preview once M8b lands. **Any of these is Tier 2**; the spike documents which one was used |
 
 ---
 
@@ -334,6 +395,7 @@ Reviewers never merge and never approve. After pass 2 is clean, the operator run
 
 | Date | Change |
 | --- | --- |
+| 2026-07-31 | **M8a hand-off.** Propagated M8 through the file: source-of-truth line and §5 now include M8 sub-milestones; the M8 addendum is named as the M8 source of truth (parent blueprint drift acknowledged, `v0.4.0` reconciliation deferred). Added **§2.6** stating where M8 sub-milestones sit (surface, not platform; §3.2 primary rubric plus new §3.3 checklist; §4 traps apply only via SD-5). Extended **§3.2** with M8-specific rows (SD-1 flag-off zero effect, SD-2 no eval + no pre-handshake post, SD-3 no query text at `cogis.ai` origin + no leak of cookies/tokens/DOM through the bridge, SD-4 drop counters visible, SD-5 popup byte-identical with flag off, SD-6 bridge-widening escalations). Added new **§3.3 M8 bridge / surface checklist** (SB-1–SB-12) covering origin-lock string equality, nonce echo, envelope allowlist, no `postMessage("*")`, second-origin checks on both boundaries, apex-only `matches`, WAR graph completeness, cancel isolation, unchanged timeout budgets, popup byte-identity, addendum spike residuals, and bridge-widening escalations. Added **§5.8 M8a — Bridge protocol + content script** (previous "live selector polish" renumbered to **§5.9**), which authorizes authoring the open S8.1 spike as task 1 from live investigation. Added an M8a row to §7 local prerequisites noting the origin-lock harness requirement (a `127.0.0.1` origin will not exercise the codepath). Spikes-line updated for S8.1–S8.3 open stubs. |
 | 2026-07-30 | **M7 Grok hand-off.** Propagated M7 through the file: source-of-truth line and §5 now read M1–M7; §3.1 is the platform table for M1–M4 **and M7**; §2.5 states M7 is a platform milestone (not a data/UI one); §4 traps apply to it; §1 lists the S7 attachment; §7 adds the logged-in-Grok prerequisite; §8 notes five-platform fan-out. Added **§5.7 M7 — Grok** (previous "live selector polish" renumbered to **§5.8**), which authorizes authoring the open S7 spike as task 1 from live investigation. Companion: blueprint gains an **M7 — Grok** section, without which escalation #10 still blocks the platform add. |
 | 2026-07-30 | Switched the hand-off from copy-paste to attach-once. This file is now **attached in Cursor** instead of withheld; the operator pastes only the short §5.x block, and each §5.x prompt tells the agent to read §2/§3/§4 from the attached file and transcribe the §3 table into the PR body itself. §6 review prompts reference §6.1/§6.2 in the repo instead of inlining them. |
 | 2026-07-30 | Renamed from `cursor-handoff-prompts.md`; declared the official source of truth for all hand-off prompts. Split implementer (Cursor) and dual-review (Perplexity Computer) audiences. Added §2 Definition of Done, §3 self-check tables, §4 Known traps, and §6 review loop policy from M3 review lessons. |
