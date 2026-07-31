@@ -6,7 +6,7 @@
 
 > Full receipts live in [`s8-1-observation-log.md`](./s8-1-observation-log.md). This doc records only the locked contract — the addendum, M8a hand-off, and the M6 debug panel spec must all conform to what is stated here. Every row includes its citation into the observation log so future readers can verify without re-running the spike.
 >
-> **The spike harness (`spike-ext/`, `web/spike/s8-1.html`) is retained** as a debug tool during M8a implementation. Teardown is deferred to after M8a lands.
+> **The spike harness (`spike-ext/`, `web/spike/s8-1.html`) has been deleted.** It was retained as a debug tool while M8a was implemented and torn down once the M8a bridge landed on `dev`. Every claim below cites the observation log rather than the harness, so nothing here depends on the harness still existing.
 
 ## Decisions locked for M8a
 
@@ -107,7 +107,7 @@ Feeds directly into M8a implementation. Full context per constraint lives in the
 - **`sender.tab.url` origin check on the SW side** was not directly observed in the spike (the spike SW trusted the bridge). M8a must add this second origin check independent of the bridge and record its behavior; expected to be additive to this contract, not contradictory.
 - **`bad_platforms`** validation was deferred to M8a integration tests. The validation-ordering pattern (nonce upstream of per-type fields) is already established, so `bad_platforms` will follow the same shape as `bad_query` and `missing_requestId`.
 - **`event.origin === "null"`** and **`https://www.cogis.ai`** were not directly observed. Both are expected to hit the bridge's string-equality gate as ordinary origin drops if they ever reach the bridge; no path to construct them was available in the spike environment.
-- **The spike harness (`spike-ext/`, `web/spike/`) remains in the repo** for use as a debug tool during M8a implementation. Teardown PR is deferred; the harness must be deleted before M8a's PR to `main` is opened.
+- **The spike harness (`spike-ext/`, `web/spike/`) has been deleted** by this teardown PR. It served as a debug tool while the M8a bridge was implemented (PR #33) and was torn down immediately after, satisfying the requirement that it not reach `main`.
 
 ## Definition of done — satisfied
 
@@ -123,12 +123,13 @@ Feeds directly into M8a implementation. Full context per constraint lives in the
 
 - Chronological observation log: [`./s8-1-observation-log.md`](./s8-1-observation-log.md) — includes all 5 rounds of interactive observations, cumulative findings table, and 11 design constraints with full context.
 - M8 addendum: [`../agent_blueprint-m8-web-surface.md`](../agent_blueprint-m8-web-surface.md) v0.1.0 — the design this spike was verifying.
-- Spike bridge source (retained during M8a): [`../../spike-ext/content/web-bridge.js`](../../spike-ext/content/web-bridge.js)
-- Spike harness page source (retained during M8a): [`../../web/spike/s8-1.html`](../../web/spike/s8-1.html)
+- Spike bridge source: `spike-ext/content/web-bridge.js` — deleted by the teardown PR. Recoverable from git history; the shipped equivalent is `extension/content/web-bridge.js`.
+- Spike harness page source: `web/spike/s8-1.html` — deleted by the teardown PR. Recoverable from git history.
 - Related PRs:
   - PR #27 — spike harness landed
   - PR #28 — bridge self-echo fix + CSP cleanup
   - PR #29 — observation log scaffold (Rounds 1–4)
   - PR #30 — observation log Round 5 amendment
-  - _This PR_ — formal finding doc locked
-  - _Future PR (deferred past M8a start)_ — delete `spike-ext/` and `web/spike/`
+  - PR #31 — formal finding doc locked
+  - PR #33 — M8a bridge implemented against this contract
+  - _This PR_ — deleted `spike-ext/` and `web/spike/`
