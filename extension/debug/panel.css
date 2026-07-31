@@ -157,6 +157,14 @@ body {
   font-size: 0.8em;
 }
 
+.cogis-debug-list {
+  margin: 0 0 10px;
+  padding-left: 18px;
+  color: var(--cogis-ink-muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
 .cogis-debug-check {
   display: flex;
   align-items: center;

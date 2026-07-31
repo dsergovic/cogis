@@ -29,7 +29,8 @@
     "https://perplexity.ai/*",
     "https://claude.ai/*",
     "https://gemini.google.com/*",
-    "https://cogis.ai/packs/*"
+    "https://cogis.ai/packs/*",
+    "https://cogis.ai/*"
   ],
   "content_scripts": [
     {
@@ -50,6 +51,11 @@
     {
       "matches": ["https://gemini.google.com/*"],
       "js": ["content/gemini.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://cogis.ai/*"],
+      "js": ["content/web-bridge.js"],
       "run_at": "document_idle"
     }
   ],

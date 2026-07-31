@@ -147,6 +147,21 @@ describe('web_accessible_resources coverage for content-script imports', () => {
     }
   });
 
+  it('needs no WAR entry for the web bridge because its graph is a single file', () => {
+    // The bridge is deliberately flat: the locked document_idle handshake
+    // timing was observed against a single-file bridge, and the finding defers
+    // the isolated-world module import graph. If anyone adds an import here,
+    // this fails and the WAR block becomes mandatory before it can ship.
+    const graph = collectImportGraph(extensionRoot, 'content/web-bridge.js');
+    expect(graph).toEqual(['content/web-bridge.js']);
+
+    const cs = readFileSync(join(extensionRoot, 'content/web-bridge.js'), 'utf8');
+    expect(extractGetUrlResources(cs)).toEqual([]);
+
+    const manifest = JSON.parse(readFileSync(join(extensionRoot, 'manifest.json'), 'utf8'));
+    expect(warResourcesForHosts(manifest, ['https://cogis.ai/*'])).toEqual([]);
+  });
+
   it('fails closed when a getURL path would be uncovered (helper sanity)', () => {
     expect(warCovers(['lib/chatgpt-adapter.js'], 'lib/results.js')).toBe(false);
     expect(warCovers(['lib/*'], 'lib/results.js')).toBe(true);
