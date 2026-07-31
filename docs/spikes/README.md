@@ -11,5 +11,10 @@ Written findings for framework Tier 3 spikes. Owned by Human + Perplexity.
 | S5 Auth-state detection | [s5-auth-state-detection.md](./s5-auth-state-detection.md) | Resolved (matrix) | 2026-07-28 |
 | S6 Long-history reach | [s6-long-history-reach.md](./s6-long-history-reach.md) | Resolved (matrix) | 2026-07-28 |
 | S7 Grok history contract | [s7-grok-history-contract.md](./s7-grok-history-contract.md) | **Open — stub only** (all fields `TBD`; live fill-in required before M7 can claim its AC) | — |
+| S8.1 postMessage handshake contract | [s8-1-postmessage-handshake-contract.md](./s8-1-postmessage-handshake-contract.md) | **Open — stub only** (all fields `TBD`; live fill-in required before M8a can claim its AC) | — |
+| S8.2 Install-gate detection latency | [s8-2-install-gate-latency.md](./s8-2-install-gate-latency.md) | **Open — stub only** (all fields `TBD`; live fill-in required before M8b can claim its AC) | — |
+| S8.3 GitHub Pages apex + `www` redirect + custom-domain HTTPS | [s8-3-github-pages-apex-and-www.md](./s8-3-github-pages-apex-and-www.md) | **Open — stub only** (all fields `TBD`; live fill-in required before M8e can claim its AC) | — |
+
+S8.x spikes are authored alongside `docs/agent_blueprint-m8-web-surface.md` v0.1.0 and cover the M8 web search surface at `cogis.ai/`.
 
 **Evidence bar note:** Local Comet browser (user cookies) was unavailable in the Phase 1 session. Findings combine official docs, logged-out live UI probes (2026-07-28), and multiple independent open-source reverse-engineering sources. Residual risk is limited to brittle CSS selectors and occasional endpoint param drift — handled as M-milestone first-task codified tests + M5 selector pack, not as open product questions.
