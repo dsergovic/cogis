@@ -393,26 +393,183 @@ requires nonce validation (i.e. anything other than `COGIS_HELLO`) is
 automatically dropped as `drop_nonce` when no handshake has occurred.
 **Row deleted from Round 5's planned agenda.**
 
-### Round 5 (planned) — post-handshake field validation + happy-path SEARCH+CANCEL
+### Round 5 — post-handshake field validation + happy-path SEARCH+CANCEL
 
-Refined based on Round 4's findings. "SEARCH BEFORE handshake" is now
-considered already-answered; Round 5 focuses on the observations that
-require an active handshake:
+**Setup:** continued from Round 4 (page not reloaded). Session nonce was
+still `926b9bf6b5e27327e59c4ccd656b0c03`. Pre-Round-5 counter state:
+`originDropCount:0, nonceDropCount:3, malformedDropCount:2, acceptedCount:0, helloCount:0`.
 
-1. Complete handshake (click "Send HELLO now (manual)").
-2. Click envelope-validation drops that were nonce-shadowed in Round 4:
-   - "Send SEARCH with non-string query" — expect
-     `drop_malformed reason:"bad_query"`.
-   - "Send SEARCH with no requestId" — expect
-     `drop_malformed reason:"missing_requestId"`.
-3. Happy-path SEARCH: verifies the SW receives an accepted envelope via
-   `chrome.runtime.sendMessage`, returns canned chunks, the bridge forwards
-   them back to the page, and the page observes `WEB_BRIDGE_RESULT_CHUNK` +
-   `WEB_BRIDGE_PLATFORM_DONE`.
-4. Happy-path CANCEL: verifies `WEB_BRIDGE_CANCEL` is accepted and reaches
-   the SW.
+**Actions:** clicked in order:
 
-All four can be done in one continuous session without a page reload.
+1. Send HELLO now (manual) — to establish sessionNonce on the bridge side.
+2. Send SEARCH with non-string query.
+3. Send SEARCH with no requestId.
+4. Send valid `WEB_BRIDGE_SEARCH` (happy path).
+5. Send valid `WEB_BRIDGE_CANCEL` (happy path).
+
+**Observed — Click 1 (handshake):**
+
+Clean handshake (same shape as Round 2). After completion: bridge
+`sessionNonce` = `926b9bf6...` (matches the page's nonce). Counters:
+`{helloCount:1, acceptedCount:1, malformedDropCount:2, nonceDropCount:3, originDropCount:0}`.
+
+**Observed — Click 2 (SEARCH with non-string query, post-handshake):**
+
+```text
+[s8.1-page]   page_recv        data:{type:"WEB_BRIDGE_SEARCH", nonce:"926b9bf6...", requestId:"r2", query:12345, platforms:[]}
+[s8.1-bridge] drop_malformed   reason:"bad_query", type:"WEB_BRIDGE_SEARCH"
+              counters:{malformedDropCount:3, nonceDropCount:3, acceptedCount:1, helloCount:1}
+```
+
+**This is the direct A/B validation of the ordering hypothesis.** The
+_identical_ message that got `drop_nonce` in Round 4 click 4 now gets
+`drop_malformed reason:"bad_query"` in Round 5, purely because the
+handshake has completed and nonce validation now passes. The bug we
+suspected is the feature we designed.
+
+**Observed — Click 3 (SEARCH with no requestId, post-handshake):**
+
+```text
+[s8.1-bridge] drop_malformed   reason:"missing_requestId", type:"WEB_BRIDGE_SEARCH"
+              counters:{malformedDropCount:4, acceptedCount:1, helloCount:1}
+```
+
+Same story: nonce passes, `missing_requestId` fires as predicted.
+
+**Observed — Click 4 (happy-path SEARCH):**
+
+End-to-end round-trip. Full path was observable in both consoles:
+
+**Page → bridge (page tab console):**
+
+```text
+[s8.1-page]   page_send_search  {type:"WEB_BRIDGE_SEARCH", nonce:"926b9bf6...", requestId:"f5153e21-767b-496d-ab46-94dab0fd7335", query:"hello world", platforms:["chatgpt"]}
+[s8.1-page]   page_recv         data:{same envelope}  ← page received its own postMessage self-echo
+[s8.1-bridge] accepted          type:"WEB_BRIDGE_SEARCH", requestId:"f5153e21-..."
+              counters:{acceptedCount:2, malformedDropCount:4, helloCount:1}
+```
+
+**Bridge → SW (SW console):**
+
+```text
+[s8.1-sw]  sw_forward  type:"WEB_BRIDGE_SEARCH", requestId:"f5153e21-..."
+```
+
+**SW → bridge → page (page tab console again):**
+
+```text
+[s8.1-page]  page_recv  data:{
+              type:"WEB_BRIDGE_RESULT_CHUNK",
+              requestId:"f5153e21-...",
+              platform:"chatgpt",
+              status:"ok",
+              results:[{title:"[S8.1 canned] chatgpt result for \"hello world\"",
+                        url:"https://example.invalid/chatgpt/hello%20world",
+                        snippet:"Canned spike payload. Not a real result."}],
+              nonce:"926b9bf6..."
+            }
+[s8.1-page]  page_recv  data:{
+              type:"WEB_BRIDGE_PLATFORM_DONE",
+              requestId:"f5153e21-...",
+              platform:"chatgpt",
+              status:"ok",
+              nonce:"926b9bf6..."
+            }
+```
+
+**Findings from click 4:**
+
+- **Bridge → SW forwarding via `chrome.runtime.sendMessage` works.** SW
+  observed the forward and returned canned data.
+- **SW → bridge → page result-chunk + done sequence works.** The page
+  received both messages with matching `requestId` and `nonce`.
+- **STEP 0 self-echo filter works for the SW-round-trip case, not just
+  handshake.** Notice that `malformedDropCount` stayed at 4 across click 4.
+  The bridge posted `WEB_BRIDGE_RESULT_CHUNK` and `WEB_BRIDGE_PLATFORM_DONE`,
+  its own inbound listener saw those messages (visible as `page_recv` in
+  the tab console because the page also has a listener), and STEP 0
+  ignored them on the bridge side without incrementing any counter.
+  This validates STEP 0 for the general outbound-type case, not just for
+  `COGIS_READY`.
+- **`acceptedCount` counts INBOUND accepted envelopes only.** The bridge's
+  three outbound messages during click 4 (chunk + done + the page-self-echo
+  of the SEARCH) did not increment `acceptedCount`. `acceptedCount:2` after
+  this click reflects exactly one handshake accept + one SEARCH accept.
+- **The SW returned canned data synchronously via `sendMessage` reply**,
+  which the bridge then forwarded via `window.postMessage`. This is the
+  spike shortcut; the real M8a bridge will use `chrome.tabs.sendMessage`
+  from the SW asynchronously so multiple platforms can stream results
+  concurrently. That difference is spike-scope-limited and does not affect
+  the S8.1 contract findings.
+
+**Observed — Click 5 (happy-path CANCEL):**
+
+**Page → bridge:**
+
+```text
+[s8.1-page]   page_send_cancel  {type:"WEB_BRIDGE_CANCEL", nonce:"926b9bf6...", requestId:"966092c3-66a0-43cc-b550-1248f825a943"}
+[s8.1-page]   page_recv         data:{same envelope}  ← self-echo
+[s8.1-bridge] accepted          type:"WEB_BRIDGE_CANCEL", requestId:"966092c3-..."
+              counters:{acceptedCount:3, malformedDropCount:4, helloCount:1}
+```
+
+**Bridge → SW:**
+
+```text
+[s8.1-sw]  sw_forward       type:"WEB_BRIDGE_CANCEL", requestId:"966092c3-..."
+[s8.1-sw]  sw_cancel_acked  requestId:"966092c3-..."
+```
+
+**SW → bridge → page:**
+
+```text
+[s8.1-page]  page_recv  data:{
+              type:"WEB_BRIDGE_PLATFORM_DONE",
+              requestId:"966092c3-...",
+              platform:"all",
+              status:"cancelled",
+              nonce:"926b9bf6..."
+            }
+```
+
+**Findings from click 5:**
+
+- **Cancel path is symmetric to SEARCH.** Same envelope shape, same forward
+  path, same reply channel.
+- **SW returns `WEB_BRIDGE_PLATFORM_DONE` with `status:"cancelled"`,
+  `platform:"all"`.** This is a useful signaling convention for M8a: the
+  page can distinguish natural completion (`status:"ok"` per-platform)
+  from user-cancellation (`status:"cancelled", platform:"all"`).
+- **`acceptedCount` incremented once for the CANCEL envelope.** No
+  double-count for the outbound `WEB_BRIDGE_PLATFORM_DONE`.
+
+**Final Round 5 counter state:**
+
+```text
+originDropCount:0, nonceDropCount:3, malformedDropCount:4, acceptedCount:3, helloCount:1
+```
+
+**Reconciliation** (all numbers must be explained by what we clicked):
+
+- `helloCount:1` — exactly one handshake (Round 5 click 1).
+- `acceptedCount:3` — hello + SEARCH + CANCEL. Correct.
+- `nonceDropCount:3` — three pre-handshake work envelopes from Round 4
+  clicks 3, 4, 5. No post-handshake nonce drops. Correct.
+- `malformedDropCount:4` — Round 4 clicks 1 & 2 (`missing_type`,
+  `unknown_type`) + Round 5 clicks 2 & 3 (`bad_query`,
+  `missing_requestId`). Correct.
+- `originDropCount:0` — no envelope was ever delivered from a
+  non-`https://cogis.ai` origin during the entire spike. The only
+  wrong-target-origin attempts (Round 3 clicks 2 & 3) were blocked by
+  Chrome before reaching the bridge. Correct.
+
+**Every counter reflects exactly what we did.** No unexplained increments.
+No silent drops. This is the reconciliation criterion the M6 debug panel
+must satisfy for M8a to be considered debuggable in production.
+
+### Round 5 closes the interactive portion of S8.1
+
+All rows in the cumulative findings table now have answers. See below.
 
 ## Cumulative findings — mapped to S8.1 stub rows
 
@@ -438,8 +595,13 @@ Filled in as observations complete.)_
 | Envelope: `nonce_mismatch` (post-handshake)           | Rejected at `drop_nonce`. Drop captures both `received` and `expected`. Sufficient signal for M6 debug panel to distinguish nonce failure from other drops.        |
 | Validation ordering                                   | 1) origin → 2) source (window) → 3) type presence → 4) type in allowlist → 5) nonce match → 6) per-type field validity. Nonce is upstream of per-type fields.        |
 | Pre-handshake protection                              | `sessionNonce === null` before handshake completes. Every work envelope (non-`COGIS_HELLO`) that reaches the nonce gate fails as `drop_nonce`. **Fail-closed by design.** No dedicated "before handshake" gate needed. |
-| Envelope: `bad_query` (non-string), `missing_requestId`, `bad_platforms` | _TBD — Round 5, nonce-shadowed until handshake completes_                                                                                    |
-| Happy-path SEARCH + CANCEL round-trip                 | _TBD — Round 5_                                                                                                                                                    |
+| Envelope: `bad_query` (non-string), post-handshake     | Rejected at `drop_malformed reason:"bad_query"`. Confirmed via Round 4-vs-Round-5 A/B on the identical envelope.                                                    |
+| Envelope: `missing_requestId`, post-handshake         | Rejected at `drop_malformed reason:"missing_requestId"`. Same A/B path.                                                                                            |
+| Envelope: `bad_platforms`                             | Deferred to M8a integration tests. Round 4/5 established the validation-ordering pattern; the specific `bad_platforms` observation is not needed to close S8.1.    |
+| Happy-path SEARCH round-trip                          | Page → bridge (`accepted`) → SW (`sw_forward`) → bridge → page (`WEB_BRIDGE_RESULT_CHUNK` + `WEB_BRIDGE_PLATFORM_DONE`, status:"ok"). `requestId` and `nonce` echoed. |
+| Happy-path CANCEL round-trip                          | Page → bridge (`accepted`) → SW (`sw_forward` + `sw_cancel_acked`) → bridge → page (`WEB_BRIDGE_PLATFORM_DONE` with `platform:"all", status:"cancelled"`).            |
+| STEP 0 self-echo filter for outbound work replies     | Confirmed. Bridge silently ignores its own outbound `WEB_BRIDGE_RESULT_CHUNK` and `WEB_BRIDGE_PLATFORM_DONE` without incrementing `malformedDropCount`.             |
+| Counter reconciliation                                | Every counter increment is traceable to a specific click. No silent increments, no double-counting outbound. Baseline for M6 debug-panel correctness.              |
 
 ## M8a design constraints extracted from this spike
 
@@ -488,7 +650,29 @@ complete.)_
    dominates when the page hasn't handshaken yet, which is diagnostic
    information in itself).
 
-_(More may be added after Round 5.)_
+9. **STEP 0 outbound-type filter must cover ALL bridge-originated types**,
+   not just handshake replies. Round 5 click 4 validated that
+   `WEB_BRIDGE_RESULT_CHUNK` and `WEB_BRIDGE_PLATFORM_DONE` also need the
+   filter, or they will inflate `malformedDropCount` on every result posted
+   back to the page. M8a's real bridge must maintain the equivalent of the
+   `BRIDGE_ORIGINATED_TYPES` set and keep it in sync with the set of types
+   the bridge ever posts to the page.
+
+10. **Counter-reconciliation as a testability criterion.** Round 5 showed
+    that every counter increment can be traced to a specific user action.
+    This is the reconciliation criterion M8a's real bridge + M6 debug panel
+    must satisfy: given a sequence of user actions, the operator must be
+    able to explain every counter increment. If a counter moves without an
+    explaining event, that is either a bridge bug or an attack signal.
+
+11. **SW-side reply signaling convention: `WEB_BRIDGE_PLATFORM_DONE` carries
+    both `status:"ok"` (natural completion, per-platform) and
+    `status:"cancelled"` (user-cancellation, `platform:"all"`).** M8a's real
+    SW should preserve this distinction so the page can render completion
+    state correctly without out-of-band signaling.
+
+_(Complete after Round 5. Any further refinement moves to the formal
+finding doc at `s8-1-postmessage-handshake-contract.md`.)_
 
 ## Loose ends & follow-ups
 
@@ -509,11 +693,16 @@ _(More may be added after Round 5.)_
   Round 4 clicks 3–5, which already sent well-formed SEARCH envelopes
   before handshake and confirmed the fail-closed behavior via `drop_nonce`.
   Not clicked; not needed.
-- **`bad_query`, `missing_requestId`, `bad_platforms` visibility** requires
-  a completed handshake because nonce validation short-circuits them.
-  Round 5 will cover the two we care about (`bad_query`, `missing_requestId`).
-  `bad_platforms` is deferred to M8a integration tests since Round 4
-  already established validation-ordering.
+- **`bad_query` and `missing_requestId` visibility** was confirmed in
+  Round 5 clicks 2 and 3. `bad_platforms` remains deferred to M8a
+  integration tests since the validation-ordering pattern is already
+  established.
+- **SW cold-start timing.** The SW console showed `sw_forward` immediately
+  on click 4, with no perceptible wake delay. However, this was a warm SW
+  (the sw_loaded log from cold load was still visible). SW cold-start
+  latency in production (after 30s of inactivity) is a separate concern
+  that M8a integration testing must characterize. Recorded as a deferral,
+  not a spike gap.
 - **Handshake session isolation across page reloads.** Every reload
   generates a fresh session nonce (`0e3ea98e...`, `dd03e3c9...`,
   `926b9bf6...` observed so far). A previous session's nonce becomes
@@ -529,6 +718,10 @@ _(More may be added after Round 5.)_
 - Related PRs:
   - PR #27 — spike harness landed
   - PR #28 — bridge self-echo fix + CSP cleanup
-  - _Follow-up PR — this observation log — TBD_
-  - _Follow-up PR — filled finding doc — TBD_
-  - _Follow-up PR — delete spike artifacts — TBD_
+  - PR #29 — observation log scaffold (Rounds 1–4)
+  - _This PR_ — Round 5 amendment (post-handshake field validation +
+    happy-path SEARCH/CANCEL round-trip)
+  - _Follow-up PR_ — formal finding doc
+    (`s8-1-postmessage-handshake-contract.md`) filled from cumulative
+    findings table
+  - _Follow-up PR_ — delete spike artifacts
