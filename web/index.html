@@ -74,7 +74,14 @@
         </p>
       </section>
 
-      <!-- One group in M8b. Perplexity / Claude / Gemini fold in during M8c. -->
+      <!--
+        All four groups are preallocated in the locked parent §4.7 order —
+        ChatGPT → Perplexity → Claude → Gemini — so the layout is reserved
+        before the first chunk lands and cannot jump (§6 M8b AC #8). The
+        capability chips are the page's only statement of a lab's capability;
+        they are asserted against extension/lib/platforms.js in
+        tests/unit/page-contract-parity.test.js. Grok is not rendered here.
+      -->
       <section id="cogis-results" class="cogis-results" aria-live="polite">
         <div
           class="cogis-group cogis-group--idle"
@@ -84,6 +91,51 @@
           <div class="cogis-group-header">
             <span class="cogis-group-title">ChatGPT</span>
             <span class="cogis-capability" data-cogis-capability>full-text</span>
+          </div>
+          <div class="cogis-group-body">
+            <p class="cogis-group-status" data-cogis-status-text></p>
+            <ul class="cogis-result-list" data-cogis-list></ul>
+          </div>
+        </div>
+
+        <div
+          class="cogis-group cogis-group--idle"
+          data-cogis-platform="perplexity"
+          data-cogis-status="idle"
+        >
+          <div class="cogis-group-header">
+            <span class="cogis-group-title">Perplexity</span>
+            <span class="cogis-capability" data-cogis-capability>title-match</span>
+          </div>
+          <div class="cogis-group-body">
+            <p class="cogis-group-status" data-cogis-status-text></p>
+            <ul class="cogis-result-list" data-cogis-list></ul>
+          </div>
+        </div>
+
+        <div
+          class="cogis-group cogis-group--idle"
+          data-cogis-platform="claude"
+          data-cogis-status="idle"
+        >
+          <div class="cogis-group-header">
+            <span class="cogis-group-title">Claude</span>
+            <span class="cogis-capability" data-cogis-capability>title-match</span>
+          </div>
+          <div class="cogis-group-body">
+            <p class="cogis-group-status" data-cogis-status-text></p>
+            <ul class="cogis-result-list" data-cogis-list></ul>
+          </div>
+        </div>
+
+        <div
+          class="cogis-group cogis-group--idle"
+          data-cogis-platform="gemini"
+          data-cogis-status="idle"
+        >
+          <div class="cogis-group-header">
+            <span class="cogis-group-title">Gemini</span>
+            <span class="cogis-capability" data-cogis-capability>title-match</span>
           </div>
           <div class="cogis-group-body">
             <p class="cogis-group-status" data-cogis-status-text></p>
@@ -104,7 +156,7 @@
         <p>
           This page is a renderer. The search itself happens inside the Cogis Chrome extension: the
           page hands your query to the extension over a same-origin postMessage bridge and shows
-          what comes back. ChatGPT is the only group wired up today.
+          what comes back. ChatGPT, Perplexity, Claude, and Gemini each get their own group.
         </p>
       </section>
 

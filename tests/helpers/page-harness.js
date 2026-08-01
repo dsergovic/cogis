@@ -3,8 +3,16 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { createEnv } from './bridge-client-harness.js';
+import { PLATFORM_ORDER } from '../../extension/lib/platforms.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
+
+/**
+ * The page renders the popup's implemented platforms, in the popup's order.
+ * Read from extension/lib/platforms.js rather than retyped so the fake DOM
+ * cannot disagree with the source of truth about which groups exist.
+ */
+export const PAGE_GROUP_ORDER = [...PLATFORM_ORDER];
 
 export const WEB_PATHS = {
   index: join(root, 'web/index.html'),
@@ -26,7 +34,8 @@ export function readWebFile(name) {
  * context has no `document`, which is what keeps `page.js` from auto-booting.
  */
 export function loadPageApi() {
-  const context = { console };
+  // `URL` is a browser global the prefill leg of the cascade builds on.
+  const context = { console, URL };
   const source = [readWebFile('bridgeClient'), readWebFile('render'), readWebFile('page')].join(
     '\n;\n',
   );
@@ -187,15 +196,20 @@ export function buildPageDom(options = {}) {
   doc.register('cogis-gate-copy', 'p', {}, gate);
   const results = doc.register('cogis-results', 'section');
 
-  const group = new FakeElement(doc, 'div');
-  group.setAttribute('data-cogis-platform', 'chatgpt');
-  group.setAttribute('data-cogis-status', 'idle');
-  const statusText = new FakeElement(doc, 'p');
-  statusText.setAttribute('data-cogis-status-text', '');
-  const list = new FakeElement(doc, 'ul');
-  list.setAttribute('data-cogis-list', '');
-  group.append(statusText, list);
-  results.append(group);
+  // Preallocated in the locked parent §4.7 order, exactly as index.html ships
+  // them. page-contract-parity.test.js asserts this list against the real
+  // markup, so the fake cannot drift into rendering a group the page lacks.
+  for (const platformId of PAGE_GROUP_ORDER) {
+    const group = new FakeElement(doc, 'div');
+    group.setAttribute('data-cogis-platform', platformId);
+    group.setAttribute('data-cogis-status', 'idle');
+    const statusText = new FakeElement(doc, 'p');
+    statusText.setAttribute('data-cogis-status-text', '');
+    const list = new FakeElement(doc, 'ul');
+    list.setAttribute('data-cogis-list', '');
+    group.append(statusText, list);
+    results.append(group);
+  }
 
   return doc;
 }
@@ -233,7 +247,14 @@ export function startPage(options = {}) {
   if (options.start !== false) page.start();
 
   const el = (id) => doc.getElementById(id);
-  const group = () => doc.getElementById('cogis-results').querySelector('[data-cogis-platform]');
+  /** @param {string} [platformId] Defaults to ChatGPT, the first group. */
+  const group = (platformId = 'chatgpt') =>
+    doc.getElementById('cogis-results').querySelector(`[data-cogis-platform="${platformId}"]`);
+  /** Every group box in rendered DOM order. */
+  const groups = () =>
+    [...doc.getElementById('cogis-results').descendants()].filter((node) =>
+      node.attributes.has('data-cogis-platform'),
+    );
 
   return {
     api,
@@ -243,6 +264,9 @@ export function startPage(options = {}) {
     page,
     el,
     group,
+    groups,
+    groupOrder: () => groups().map((node) => node.getAttribute('data-cogis-platform')),
+    status: (platformId) => group(platformId).getAttribute('data-cogis-status'),
     clientOptions: () => clientOptions,
     /** Fire the DOMContentLoaded the bridge client is waiting on. */
     fireDomReady() {
@@ -269,9 +293,10 @@ export function startPage(options = {}) {
       el('cogis-query').value = query;
       el('cogis-search-form').dispatch('submit', { preventDefault() {} });
     },
-    statusText: () => group().querySelector('[data-cogis-status-text]').textContent,
-    resultLinks: () =>
-      [...group().querySelector('[data-cogis-list]').descendants()].filter(
+    statusText: (platformId) =>
+      group(platformId).querySelector('[data-cogis-status-text]').textContent,
+    resultLinks: (platformId) =>
+      [...group(platformId).querySelector('[data-cogis-list]').descendants()].filter(
         (node) => node.tagName === 'A',
       ),
     posted: (type) => env.posted.filter((entry) => entry.data?.type === type),

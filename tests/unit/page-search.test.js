@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { startPage } from '../helpers/page-harness.js';
+import { startPage, PAGE_GROUP_ORDER } from '../helpers/page-harness.js';
 
 /** A connected page with the handshake already done. */
 function connected() {
@@ -36,10 +36,13 @@ describe('search submit', () => {
     expect(searches[0].data).toMatchObject({
       requestId: 'req-1',
       query: 'risotto',
-      platforms: ['chatgpt'],
+      platforms: ['chatgpt', 'perplexity', 'claude', 'gemini'],
     });
-    expect(harness.group().getAttribute('data-cogis-status')).toBe('loading');
-    expect(harness.statusText()).toBe('Searching…');
+    // Every group is reserved on submit, not just the one that answers first.
+    for (const id of PAGE_GROUP_ORDER) {
+      expect(harness.status(id), id).toBe('loading');
+      expect(harness.statusText(id), id).toBe('Searching…');
+    }
   });
 
   it('trims the query before sending it', () => {
@@ -191,15 +194,13 @@ describe('in-flight supersede', () => {
   });
 });
 
-describe('ChatGPT-only rendering', () => {
-  it('ships exactly one group', () => {
-    // Perplexity / Claude / Gemini are M8c (§6 M8b out-of-scope).
+describe('four-group rendering', () => {
+  it('ships the four groups in the locked parent §4.7 order', () => {
+    // §6 M8c: ChatGPT → Perplexity → Claude → Gemini. Grok is M7, not here.
     const harness = connected();
-    expect(harness.view.platforms).toEqual(['chatgpt']);
-    const groups = [...harness.el('cogis-results').descendants()].filter((node) =>
-      node.attributes.has('data-cogis-platform'),
-    );
-    expect(groups).toHaveLength(1);
+    expect(harness.view.platforms).toEqual(['chatgpt', 'perplexity', 'claude', 'gemini']);
+    expect(harness.groupOrder()).toEqual(['chatgpt', 'perplexity', 'claude', 'gemini']);
+    expect(harness.groupOrder()).not.toContain('grok');
   });
 
   it('drops a chunk for a platform the page does not render', () => {
@@ -207,12 +208,252 @@ describe('ChatGPT-only rendering', () => {
     harness.submit('risotto');
     harness.env.deliver({
       data: chunk(harness.nonce(), {
-        platform: 'claude',
-        results: [{ platform: 'claude', title: 'Elsewhere', dateIso: null, deepLinkUrl: null }],
+        platform: 'grok',
+        results: [{ platform: 'grok', title: 'Elsewhere', dateIso: null, deepLinkUrl: null }],
       }),
     });
-    expect(harness.resultLinks()).toHaveLength(0);
-    expect(harness.group().getAttribute('data-cogis-status')).toBe('loading');
+    for (const id of PAGE_GROUP_ORDER) {
+      expect(harness.resultLinks(id), id).toHaveLength(0);
+      expect(harness.status(id), id).toBe('loading');
+    }
+  });
+
+  it('routes each lab chunk into its own group and nowhere else', () => {
+    const harness = connected();
+    harness.submit('risotto');
+    for (const id of PAGE_GROUP_ORDER) {
+      harness.env.deliver({
+        data: chunk(harness.nonce(), {
+          platform: id,
+          results: [
+            {
+              platform: id,
+              title: `${id} hit`,
+              dateIso: null,
+              deepLinkUrl: null,
+              prefillSupported: false,
+            },
+          ],
+        }),
+      });
+    }
+    for (const id of PAGE_GROUP_ORDER) {
+      const links = harness.resultLinks(id);
+      expect(links, id).toHaveLength(1);
+      expect(links[0].textContent, id).toContain(`${id} hit`);
+    }
+  });
+});
+
+describe('partial failure stays partial (§6 M8c AC #3)', () => {
+  it('combines login_required, ready, and timeout under one requestId', () => {
+    // One lab logged out, one serving pointers, one timing out — all in the
+    // same request. None of the three may affect the other two.
+    const harness = connected();
+    harness.submit('risotto');
+    const nonce = harness.nonce();
+
+    harness.env.deliver({
+      data: chunk(nonce, { platform: 'perplexity', status: 'login_required', results: [] }),
+    });
+    harness.env.deliver({
+      data: chunk(nonce, {
+        platform: 'claude',
+        status: 'ready',
+        results: [
+          {
+            platform: 'claude',
+            title: 'Risotto method',
+            dateIso: '2026-03-04T10:00:00.000Z',
+            deepLinkUrl: 'https://claude.ai/chat/1f0d9a6e-2b74-4c1b-9a3e-5d8c7b6a4f21',
+            prefillSupported: false,
+          },
+        ],
+      }),
+    });
+    harness.env.deliver({
+      data: chunk(nonce, { platform: 'gemini', status: 'timeout', results: [] }),
+    });
+
+    expect(harness.status('perplexity')).toBe('login_required');
+    expect(harness.statusText('perplexity')).toContain('Please log in to Perplexity');
+
+    expect(harness.status('claude')).toBe('ready');
+    expect(harness.resultLinks('claude')[0].href).toBe(
+      'https://claude.ai/chat/1f0d9a6e-2b74-4c1b-9a3e-5d8c7b6a4f21',
+    );
+
+    expect(harness.status('gemini')).toBe('timeout');
+    expect(harness.statusText('gemini')).toBe('Gemini is temporarily unavailable.');
+
+    // The lab nobody reported on is still waiting, not silently failed.
+    expect(harness.status('chatgpt')).toBe('loading');
+  });
+
+  it('links each logged-out lab to its own login surface', () => {
+    const harness = connected();
+    harness.submit('risotto');
+    const nonce = harness.nonce();
+    for (const id of PAGE_GROUP_ORDER) {
+      harness.env.deliver({ data: chunk(nonce, { platform: id, status: 'login_required' }) });
+    }
+
+    const expected = {
+      chatgpt: ['Please log in to ChatGPT', 'https://chatgpt.com/'],
+      perplexity: ['Please log in to Perplexity', 'https://www.perplexity.ai/'],
+      claude: ['Please log in to Claude', 'https://claude.ai/login'],
+      gemini: ['Please log in to Gemini', 'https://gemini.google.com/app'],
+    };
+    for (const [id, [copy, loginUrl]] of Object.entries(expected)) {
+      expect(harness.statusText(id), id).toContain(copy);
+      const link = [...harness.group(id).descendants()].find(
+        (node) => node.className === 'cogis-login-link',
+      );
+      expect(link.href, id).toBe(loginUrl);
+      expect(link.rel, id).toBe('noopener noreferrer');
+    }
+  });
+});
+
+describe('empty is only ever the adapter’s own empty (§6 M8c AC #4)', () => {
+  it('does not relabel a truncated ready group as empty', () => {
+    // A soft-ceilinged / truncated scan still returns pointers: it is `ready`
+    // with fewer rows, never "no matching chats". Mirrors parent M7 AC #6.
+    const harness = connected();
+    harness.submit('risotto');
+    harness.env.deliver({
+      data: chunk(harness.nonce(), {
+        platform: 'claude',
+        status: 'ready',
+        truncated: true,
+        results: [
+          {
+            platform: 'claude',
+            title: 'Partial scan hit',
+            dateIso: null,
+            deepLinkUrl: null,
+            prefillSupported: false,
+          },
+        ],
+      }),
+    });
+
+    expect(harness.status('claude')).toBe('ready');
+    expect(harness.statusText('claude')).not.toBe('No matching chats.');
+    expect(harness.resultLinks('claude')).toHaveLength(1);
+  });
+
+  it('does not relabel login_required, unavailable, or timeout as empty', () => {
+    const harness = connected();
+    harness.submit('risotto');
+    const nonce = harness.nonce();
+    const notEmpty = ['login_required', 'unavailable', 'timeout'];
+    for (const [i, status] of notEmpty.entries()) {
+      const id = PAGE_GROUP_ORDER[i + 1];
+      harness.env.deliver({ data: chunk(nonce, { platform: id, status, results: [] }) });
+      expect(harness.status(id), id).toBe(status);
+      expect(harness.statusText(id), id).not.toBe('No matching chats.');
+    }
+  });
+
+  it('says "No matching chats." only for a real empty', () => {
+    const harness = connected();
+    harness.submit('risotto');
+    harness.env.deliver({
+      data: chunk(harness.nonce(), { platform: 'gemini', status: 'empty', results: [] }),
+    });
+    expect(harness.status('gemini')).toBe('empty');
+    expect(harness.statusText('gemini')).toBe('No matching chats.');
+  });
+});
+
+describe('deep-link cascade per lab (§6 M8c AC #6)', () => {
+  it('uses the pointer deep link when the adapter supplies one', () => {
+    const harness = connected();
+    harness.submit('risotto');
+    const nonce = harness.nonce();
+    // The live patterns from parent §3.6.1.
+    const deepLinks = {
+      chatgpt: 'https://chatgpt.com/c/abc-123',
+      perplexity: 'https://www.perplexity.ai/search/risotto-technique-AbCdEf',
+      claude: 'https://claude.ai/chat/1f0d9a6e-2b74-4c1b-9a3e-5d8c7b6a4f21',
+      gemini: 'https://gemini.google.com/app/9f8e7d6c5b4a',
+    };
+    for (const [id, deepLinkUrl] of Object.entries(deepLinks)) {
+      harness.env.deliver({
+        data: chunk(nonce, {
+          platform: id,
+          results: [
+            {
+              platform: id,
+              title: `${id} hit`,
+              dateIso: null,
+              deepLinkUrl,
+              prefillSupported: false,
+            },
+          ],
+        }),
+      });
+      const [link] = harness.resultLinks(id);
+      expect(link.href, id).toBe(deepLinkUrl);
+      expect(link.target, id).toBe('_blank');
+      expect(link.rel, id).toBe('noopener noreferrer');
+    }
+  });
+
+  it('falls back to the lab home and never fabricates a deep link', () => {
+    const harness = connected();
+    harness.submit('risotto');
+    const nonce = harness.nonce();
+    const homes = {
+      chatgpt: 'https://chatgpt.com',
+      perplexity: 'https://www.perplexity.ai',
+      claude: 'https://claude.ai',
+      gemini: 'https://gemini.google.com/app',
+    };
+    for (const [id, home] of Object.entries(homes)) {
+      harness.env.deliver({
+        data: chunk(nonce, {
+          platform: id,
+          results: [
+            {
+              platform: id,
+              title: `${id} hit`,
+              dateIso: null,
+              deepLinkUrl: null,
+              prefillSupported: false,
+            },
+          ],
+        }),
+      });
+      const [link] = harness.resultLinks(id);
+      expect(link.href, id).toBe(home);
+      // A fabricated pointer would look like /c/, /search/, /chat/, /app/<id>.
+      expect(link.href, id).not.toMatch(/\/(c|chat|search)\/.+/);
+    }
+  });
+
+  it('offers the Perplexity ?q= prefill when the pointer says it is supported', () => {
+    // Parent §4.4 middle leg of the cascade — Perplexity only.
+    const harness = connected();
+    harness.submit('risotto');
+    harness.env.deliver({
+      data: chunk(harness.nonce(), {
+        platform: 'perplexity',
+        results: [
+          {
+            platform: 'perplexity',
+            title: 'Prefill only',
+            dateIso: null,
+            deepLinkUrl: null,
+            prefillSupported: true,
+          },
+        ],
+      }),
+    });
+    expect(harness.resultLinks('perplexity')[0].href).toBe(
+      'https://www.perplexity.ai/search?q=risotto',
+    );
   });
 });
 
