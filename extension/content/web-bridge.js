@@ -16,7 +16,7 @@
 
   // Mirror of WEB_SEARCH_SURFACE_ENABLED in lib/flags.js.
   // tests/unit/web-bridge-flag-sync.test.js fails if the two drift.
-  const WEB_SEARCH_SURFACE_ENABLED = false;
+  const WEB_SEARCH_SURFACE_ENABLED = true;
 
   // Flag off ⇒ no listeners, no counters, no page traffic (§3.2 SD-1).
   if (!WEB_SEARCH_SURFACE_ENABLED) return;

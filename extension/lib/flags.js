@@ -11,4 +11,4 @@
  * file is a flat classic content script with no imports, so it cannot read
  * this module. `tests/unit/web-bridge-flag-sync.test.js` keeps the two equal.
  */
-export const WEB_SEARCH_SURFACE_ENABLED = false;
+export const WEB_SEARCH_SURFACE_ENABLED = true;
