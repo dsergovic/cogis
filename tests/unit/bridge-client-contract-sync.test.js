@@ -4,8 +4,12 @@ import {
   WEB_BRIDGE_PAGE_ORIGIN,
   WEB_BRIDGE_TYPES,
 } from '../../extension/lib/web-bridge.js';
+import { PLATFORMS, PLATFORM_ORDER } from '../../extension/lib/platforms.js';
 import { loadClientApi, readClientSource } from '../helpers/bridge-client-harness.js';
 import { readWebFile } from '../helpers/page-harness.js';
+
+/** The four lab origins render.js is allowed to name, read from the source of truth. */
+const LAB_ORIGINS = PLATFORM_ORDER.map((id) => PLATFORMS[id].origin);
 
 const source = readClientSource();
 const api = loadClientApi();
@@ -64,7 +68,9 @@ describe('web/ page hygiene', () => {
    */
   const pageSources = [
     ['bridge-client.js', source, []],
-    ['render.js', readWebFile('render'), ['https://chatgpt.com']],
+    // render.js names each lab's own origin — a login surface and a home
+    // fallback per group (§6 M8c). None of them is fetched; they are hrefs.
+    ['render.js', readWebFile('render'), LAB_ORIGINS],
     ['page.js', readWebFile('page'), []],
     ['index.html', readWebFile('index'), ['https://github.com/dsergovic/cogis']],
     ['404.html', readWebFile('notFound'), []],
@@ -93,6 +99,10 @@ describe('web/ page hygiene', () => {
     for (const [name, text] of pageSources) {
       expect(text, name).not.toMatch(/<script[^>]+src=["']https?:/i);
       expect(text, name).not.toMatch(/<link[^>]+href=["']https?:/i);
+      // `@import` and `url()` pull a subresource in CSS and markup only. In a
+      // script `URL(` is the constructor, which fetches nothing — the fetch /
+      // XHR ban above is what covers the scripts.
+      if (name.endsWith('.js')) continue;
       expect(text, name).not.toMatch(/@import|url\(\s*["']?https?:/i);
     }
   });

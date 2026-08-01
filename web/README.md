@@ -2,9 +2,9 @@
 
 This is the source for the static site served at [`https://cogis.ai/`](https://cogis.ai/) via GitHub Pages.
 
-## Current state (M8b — ChatGPT only)
+## Current state (M8c — all four labs)
 
-`index.html` is the real search surface: searchbox, install-status pill, install-gate, and a single **ChatGPT** result group. Perplexity, Claude, and Gemini fold in during M8c; the debug-panel row is M8d; the DNS cutover and the extension flag flip are M8e.
+`index.html` is the real search surface: searchbox, install-status pill, install-gate, and four preallocated result groups in the locked parent §4.7 order — **ChatGPT → Perplexity → Claude → Gemini**. Grok is M7 and is not rendered here. The 900 ms / 100 ms pair below remains locked and untouched by M8c. The debug-panel row is M8d; the DNS cutover and the `WEB_SEARCH_SURFACE_ENABLED` flip are M8e, so the flag stays `false` until then.
 
 The page is a renderer, not a search engine. It emits `COGIS_HELLO`, waits for `COGIS_READY`, and then hands queries to the extension over `postMessage`. It resolves nothing itself.
 
@@ -13,7 +13,7 @@ The page is a renderer, not a search engine. It emits `COGIS_HELLO`, waits for `
 | `index.html`                 | Markup and the exact §3.7 CSP meta. Ships every id and `data-cogis-*` hook the scripts bind to.                                              |
 | `404.html`                   | Minimal "page not found" with a link back to `/`.                                                                                            |
 | `assets/js/bridge-client.js` | Page half of the §3.9 envelope contract. Mirror of `extension/content/web-bridge.js` — a change to either lands in the same PR as the other. |
-| `assets/js/render.js`        | Group rendering and the locked copy. ChatGPT only.                                                                                           |
+| `assets/js/render.js`        | Group rendering and the locked copy, for all four labs.                                                                                      |
 | `assets/js/page.js`          | Wiring: install-gate budget, input handling, in-flight cancel.                                                                               |
 | `assets/css/site.css`        | All styling. Self-hosted, no fonts fetched.                                                                                                  |
 

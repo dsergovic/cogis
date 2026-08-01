@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import {
   PLATFORMS,
+  PLATFORM_ORDER,
   FOOTNOTE_TEXT,
   loginRequiredCopy,
   unavailableCopy,
@@ -11,7 +12,12 @@ import {
 import { resolveResultHref } from '../../extension/lib/results.js';
 import { POPUP_WATCHDOG_MS } from '../../extension/lib/timeouts.js';
 import { normalizeQuery } from '../../extension/lib/messaging.js';
-import { loadPageApi, readWebFile, buildPageDom } from '../helpers/page-harness.js';
+import {
+  loadPageApi,
+  readWebFile,
+  buildPageDom,
+  PAGE_GROUP_ORDER,
+} from '../helpers/page-harness.js';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const addendum = readFileSync(join(repoRoot, 'docs/agent_blueprint-m8-web-surface.md'), 'utf8');
@@ -41,40 +47,97 @@ describe('CSP meta matches §3.7 exactly', () => {
   }
 });
 
-describe('page literals mirror extension/lib', () => {
-  it('uses the same ChatGPT platform definition', () => {
-    const chatgpt = PLATFORMS.chatgpt;
-    expect(api.render.CHATGPT).toEqual({
-      id: chatgpt.id,
-      label: chatgpt.label,
-      capability: chatgpt.capability,
-      origin: chatgpt.origin,
-      loginUrl: chatgpt.loginUrl,
-    });
-    // The capability chip is baked into the markup, so assert the markup too.
-    expect(index).toContain(
-      `<span class="cogis-capability" data-cogis-capability>full-text</span>`,
-    );
-    expect(index).toContain(`<span class="cogis-group-title">${chatgpt.label}</span>`);
+/**
+ * Every group box in index.html, in document order, with the two strings the
+ * markup states about each lab. Parsed rather than retyped so the assertions
+ * below are about the page that actually ships.
+ */
+const markupGroups = [
+  ...index.matchAll(
+    /data-cogis-platform="([a-z]+)"[\s\S]*?<span class="cogis-group-title">([^<]+)<\/span>\s*<span class="cogis-capability" data-cogis-capability>([^<]+)<\/span>/g,
+  ),
+].map(([, id, label, capability]) => ({ id, label, capability }));
+
+describe('group order is the locked parent §4.7 order', () => {
+  // §6 M8c scope: ChatGPT → Perplexity → Claude → Gemini. Grok is M7 and is
+  // not rendered by the page. The order is read from PLATFORM_ORDER, so the
+  // popup and the page cannot disagree about it.
+  it('renders exactly the popup platform set', () => {
+    expect(api.render.PAGE_PLATFORMS).toEqual([...PLATFORM_ORDER]);
+    expect(api.render.PAGE_PLATFORMS).not.toContain('grok');
   });
 
-  it('uses the same group chip copy the popup uses', () => {
-    expect(api.render.COPY.loginRequired).toBe(loginRequiredCopy('chatgpt'));
-    expect(api.render.COPY.unavailable).toBe(unavailableCopy('chatgpt'));
-    expect(api.render.statusCopy('timeout')).toBe(unavailableCopy('chatgpt'));
+  it('preallocates the four group boxes in that order in index.html', () => {
+    expect(markupGroups.map((group) => group.id)).toEqual([...PLATFORM_ORDER]);
+  });
+
+  it('drives the fake DOM from the same order', () => {
+    expect(PAGE_GROUP_ORDER).toEqual([...PLATFORM_ORDER]);
+  });
+});
+
+describe('page literals mirror extension/lib', () => {
+  it('mirrors every platform definition, in order', () => {
+    expect(
+      api.render.PLATFORMS.map((platform) => ({ id: platform.id, label: platform.label })),
+    ).toEqual(PLATFORM_ORDER.map((id) => ({ id, label: PLATFORMS[id].label })));
+    for (const id of PLATFORM_ORDER) {
+      expect(api.render.getPlatform(id).loginUrl, id).toBe(PLATFORMS[id].loginUrl);
+    }
+  });
+
+  it('states each capability exactly as extension/lib/platforms.js does', () => {
+    // §6 M8c AC #2: the capability chip is the page's only statement of a
+    // lab's capability, and it is not allowed to invent one. render.js does
+    // not carry a capability field at all — this markup is the single place.
+    for (const group of markupGroups) {
+      expect(group.capability, group.id).toBe(PLATFORMS[group.id].capability);
+      expect(group.label, group.id).toBe(PLATFORMS[group.id].label);
+    }
+    expect(markupGroups.map((group) => group.capability)).toEqual([
+      'full-text',
+      'title-match',
+      'title-match',
+      'title-match',
+    ]);
+  });
+
+  it('uses the same group chip copy the popup uses, per lab', () => {
+    for (const id of PLATFORM_ORDER) {
+      expect(api.render.loginRequiredCopy(id), id).toBe(loginRequiredCopy(id));
+      expect(api.render.unavailableCopy(id), id).toBe(unavailableCopy(id));
+      expect(api.render.statusCopy('login_required', id), id).toBe(loginRequiredCopy(id));
+      expect(api.render.statusCopy('timeout', id), id).toBe(unavailableCopy(id));
+      expect(api.render.statusCopy('unavailable', id), id).toBe(unavailableCopy(id));
+    }
     expect(index).toContain(FOOTNOTE_TEXT);
     expect(index).toContain('Type a query and press Enter.');
   });
 
-  it('resolves hrefs the same way the popup does', () => {
-    const origin = PLATFORMS.chatgpt.origin;
+  it('spells the per-lab login sentence exactly', () => {
+    expect(PLATFORM_ORDER.map((id) => api.render.loginRequiredCopy(id))).toEqual([
+      'Please log in to ChatGPT',
+      'Please log in to Perplexity',
+      'Please log in to Claude',
+      'Please log in to Gemini',
+    ]);
+  });
+
+  it('resolves hrefs the same way the popup does, for every platform', () => {
+    // Includes the `null` deep-link row: the page must land on the lab's own
+    // home surface, never on a URL shaped like a chat pointer (§6 M8c AC #6).
     const cases = [
-      { deepLinkUrl: 'https://chatgpt.com/c/abc', prefillSupported: false },
+      { deepLinkUrl: 'https://example.invalid/deep/link', prefillSupported: false },
       { deepLinkUrl: null, prefillSupported: false },
+      { deepLinkUrl: null, prefillSupported: true },
       { deepLinkUrl: '', prefillSupported: true },
     ];
-    for (const hit of cases) {
-      expect(api.render.resultHref(hit)).toBe(resolveResultHref(hit, 'chatgpt', 'risotto', origin));
+    for (const id of PLATFORM_ORDER) {
+      for (const hit of cases) {
+        expect(api.render.resultHref(hit, id, 'risotto'), `${id} ${JSON.stringify(hit)}`).toBe(
+          resolveResultHref(hit, id, 'risotto', PLATFORMS[id].origin),
+        );
+      }
     }
   });
 
@@ -112,10 +175,14 @@ describe('index.html provides every hook the scripts bind to', () => {
     });
   }
 
-  it('has the group hooks render.js queries', () => {
-    expect(index).toContain('data-cogis-platform="chatgpt"');
-    expect(index).toContain('data-cogis-status-text');
-    expect(index).toContain('data-cogis-list');
+  it('has the group hooks render.js queries, for every group', () => {
+    for (const id of PLATFORM_ORDER) {
+      expect(index, id).toContain(`data-cogis-platform="${id}"`);
+    }
+    // One status line and one list per group, or a chunk would render into
+    // the wrong lab's box.
+    expect(index.match(/data-cogis-status-text/g)).toHaveLength(PLATFORM_ORDER.length);
+    expect(index.match(/data-cogis-list/g)).toHaveLength(PLATFORM_ORDER.length);
   });
 
   it('loads the three page scripts in bridge → render → page order', () => {

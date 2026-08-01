@@ -64,6 +64,9 @@
 
     /** @type {string|null} */
     let activeRequestId = null;
+    /** Needed for the Perplexity `?q=` prefill leg of the cascade (parent §4.4). */
+    /** @type {string|null} */
+    let activeQuery = null;
     /** @type {Map<string, unknown>} */
     const watchdogs = new Map();
 
@@ -119,6 +122,7 @@
 
       const requestId = newRequestId(cryptoImpl);
       activeRequestId = requestId;
+      activeQuery = query;
 
       // Reserve the group layout before the first chunk lands (AC #8).
       for (const platformId of view.platforms) {
@@ -142,7 +146,10 @@
     client.on('chunk', (message) => {
       if (!isActive(message)) return;
       clearWatchdog(message.platform);
-      view.setGroup(message.platform, message.status, { results: message.results ?? [] });
+      view.setGroup(message.platform, message.status, {
+        results: message.results ?? [],
+        query: activeQuery,
+      });
     });
 
     client.on('done', (message) => {
