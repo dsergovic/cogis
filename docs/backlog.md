@@ -5,7 +5,7 @@ Pick up during polish, the next natural milestone, or a short fix branch.
 Do **not** treat this file as agent context unless the operator attaches it.
 
 **Integration branch:** `dev`  
-**Last updated:** 2026-07-31 (PR #36 close-out)
+**Last updated:** 2026-07-31 (M8c live smoke)
 
 ---
 
@@ -40,6 +40,8 @@ Add new rows at the top of the relevant section. Prefer one line + link to PR/is
 
 | ID | Status | Item | Notes |
 | --- | --- | --- | --- |
+| BL-034 | open | **Collapse all / Expand all on the web surface** | Two links at the top of the results region that drive every group's collapsed state at once. Depends on BL-033 (there is nothing to drive until per-group collapse exists on the page). Session-only like BL-020 — no persisted preference, no new `chrome.storage` key, no page-side storage (§8.1: the page stores nothing). Worth considering for the popup too once the page pattern is proven; the popup has per-lab collapse but no all-at-once control. |
+| BL-033 | open | **Per-lab collapse/expand toggle on the web surface** | BL-020 shipped this in the popup (down-arrow button left of each lab name, session-only `data-cogis-collapsed`, keyboard-focusable with `:focus-visible`); the M8c `cogis.ai` page did not inherit it. Port the popup pattern to `web/assets/js/render.js` + `web/assets/css/site.css`. Constraint: the `--group-min-h` reservation exists so the layout cannot jump before the first chunk lands (§6 M8b AC #8) — a collapse toggle must not defeat it while a group is still `loading`. Noted during the M8c live smoke, 2026-07-31. |
 | BL-020 | done | **Per-lab collapse/expand toggle** | Shipped on `feature/hotfix-smoke-tabs-collapse`: down-arrow button left of each lab name; session-only (`data-cogis-collapsed`); keyboard-focusable with `:focus-visible`. |
 | BL-021 | open | **M2 Spaces enumeration (gated)** | Perplexity Space-only threads deferred: `SPACE_THREAD_ENUMERATION_ENABLED=false` until one list endpoint is live-proven; then enable under fetch/space caps. |
 | BL-022 | open | **M3 Claude Projects live confirmation** | Projects directory + `…/projects/{id}/conversations` inferred (S2 residual #2). Adapter keeps ladder (breadth-first page-1) but treats directory/all-fetch/truncated/budget-skip as coverage-unproven → `unavailable`/`timeout` (not false `empty`). Confirm routes in Network tab; then tighten README and drop caveat. |
@@ -89,3 +91,4 @@ Add new rows at the top of the relevant section. Prefer one line + link to PR/is
 | 2026-07-30 | BL-001 tab litter / supersede close race + BL-020 per-lab collapse marked done (hotfix branch). |
 | 2026-07-31 | BL-030/031/032 S8.2 close-out follow-ups (PR #36 review nits): README S8.1 row sync, R2 update-window stub, github-pages deployment branch rule cleanup. |
 | 2026-07-31 | BL-028 HTML conformance validator gap recorded while landing M8b PR-B. |
+| 2026-07-31 | BL-033/034 web-surface collapse controls filed from the M8c live smoke (PR #39 merged). |
