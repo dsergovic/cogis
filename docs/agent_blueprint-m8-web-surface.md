@@ -6,7 +6,7 @@
 **Parent blueprint:** [`docs/agent_blueprint.md`](./agent_blueprint.md) **v0.3.0** (locked; this addendum amends only the sections named in §11 below)
 **Phase 0 input for M8:** this document (Phase-0-style addendum for the M8 web search surface)
 **Status:** Phase 0 addendum — awaiting dual reviewer sign-off (Claude Code + Codex) and human merge before any implementation branch is cut
-**Version:** 0.1.1
+**Version:** 0.1.2
 **Integration branch:** `dev`
 **Depends on:** M1–M4 adapters (merged), M5 selector manifest (merged), M6 debug panel (merged); **does not depend on M7 (Grok)**
 
@@ -16,7 +16,7 @@
 
 Cogis M8 adds a **second search surface** at `https://cogis.ai/` — a Google-V1-style page with a single searchbox — backed by the exact same extension the popup uses. The user opens `cogis.ai`, types a query, presses Enter, and sees the same grouped, capability-labeled results the popup already renders — on the page, not in a popover.
 
-M8 is **additive**. The popup remains the primary product and can be listed on the Chrome Web Store on its own timeline; the web surface is feature-flagged (`WEB_SEARCH_SURFACE_ENABLED`, default `false`) so the extension can ship with the flag off. The web page **cannot function without the installed extension** — the extension holds every credential and does every lab call, exactly as in the popup surface.
+M8 is **additive**. The popup remains the primary product and can be listed on the Chrome Web Store on its own timeline; the web surface is feature-flagged (`WEB_SEARCH_SURFACE_ENABLED`, default `true` as of v0.1.2; `false` in v0.1.0–v0.1.1) so the extension can ship with the flag off if it ever needs to. The web page **cannot function without the installed extension** — the extension holds every credential and does every lab call, exactly as in the popup surface.
 
 This addendum is the concrete build-out of the reserved V2 seam from parent blueprint §14: *"`cogis.ai/search` additional surface (extension bridge via `postMessage`, origin lock + nonce — never `"*"`)."* The only substantive change from that seam is that the searchbox lives at **`/`**, not `/search`.
 
@@ -77,7 +77,7 @@ cogis/
 │   │   ├── gemini.js
 │   │   └── web-bridge.js           # NEW — cogis.ai <-> SW postMessage bridge, matched to https://cogis.ai/* only
 │   ├── lib/
-│   │   ├── flags.js                # NEW or extended — WEB_SEARCH_SURFACE_ENABLED = false (default)
+│   │   ├── flags.js                # NEW or extended — WEB_SEARCH_SURFACE_ENABLED = true (default since v0.1.2)
 │   │   └── … (unchanged)
 │   ├── debug/
 │   │   └── panel.js                # + "Web bridge" row (see §7)
@@ -131,7 +131,7 @@ Same as parent §3.4. Additional M8 constants:
 
 - Message types (page ↔ bridge): `COGIS_HELLO`, `COGIS_READY`, `WEB_BRIDGE_SEARCH`, `WEB_BRIDGE_CANCEL`, `WEB_BRIDGE_RESULT_CHUNK`, `WEB_BRIDGE_PLATFORM_DONE`, `WEB_BRIDGE_ERROR`.
 - Bridge origin allowlist constant: `WEB_BRIDGE_PAGE_ORIGIN = "https://cogis.ai"` — **single value**, string equality only, no glob, no regex.
-- Feature flag: `WEB_SEARCH_SURFACE_ENABLED` (boolean, default `false`).
+- Feature flag: `WEB_SEARCH_SURFACE_ENABLED` (boolean, default `true`). _(v0.1.2: this replaces default `false`. The committed value is a **product** decision, not a test dependency: the bridge test harness constructs both the on and the off case from whichever value is committed, so the flag-off path in §6 M8a AC #2 stays covered permanently and rollback per §6 M8e AC #6 stays rehearsable. Changing this default is Tier 3 — see §10.)_
 
 ### 3.5 Database schema
 
@@ -324,8 +324,8 @@ Follows the parent §10 pattern. Each M8x is its own PR against `dev`, human-mer
 **Behavioral AC.**
 
 1. All M1–M6 (and M7 if landed) AC remain green.
-2. With `WEB_SEARCH_SURFACE_ENABLED = false`, no `webBridge:*` message produces any observable effect (no adapter call, no counter increment beyond the drop counter, no console noise).
-3. With the flag flipped on **in a test harness only** (not shipped on), a well-formed `COGIS_HELLO` from an origin string equal to `https://cogis.ai` receives a `COGIS_READY` reply with matching nonce and current `extVersion`.
+2. With `WEB_SEARCH_SURFACE_ENABLED = false`, no `webBridge:*` message produces any observable effect (no adapter call, no counter increment beyond the drop counter, no console noise). _(v0.1.2: AC #2 and AC #3 are both permanent. The harness derives the opposite-state source from the committed literal rather than assuming it reads `false`, so flipping the default in v0.1.2 removed neither case. M8a's own scope statements above are left as the historical record of what M8a landed and are not restated.)_
+3. With the flag on, a well-formed `COGIS_HELLO` from an origin string equal to `https://cogis.ai` receives a `COGIS_READY` reply with matching nonce and current `extVersion`.
 4. Origin mismatch (`https://cogis.ai.evil.example`, `http://cogis.ai`, `https://www.cogis.ai`, `null`, missing) drops the message and increments the drop counter; no reply is emitted.
 5. Nonce mismatch after handshake drops the message; no reply.
 6. Malformed envelope (missing `type`, unknown `type`, non-string `query`, oversized payload beyond a Tier 2 limit) drops and counts.
@@ -354,8 +354,8 @@ Follows the parent §10 pattern. Each M8x is its own PR against `dev`, human-mer
 - `web/assets/js/render.js` implementing the group-render rules (capability label per group, per-group loading spinner + error chip, layout allocated up front, deep-link click cascade).
 - `web/CNAME` = `cogis.ai`. `web/404.html` renders a minimal "page not found — go to `/`" link.
 - CSP meta tag per §3.7.
-- Flag on the extension side flipped to `true` for a **local human smoke build only** — not for any published extension build. This lets the human verify the ChatGPT loop end-to-end on a real profile; the shipped extension version does not enable the flag until M8e.
-- `.github/workflows/pages.yml` publishes `web/` **from `dev`** for the duration of M8 development, which is the workflow already on disk and is not modified by M8b. The switch to publishing from `main` is **M8e** work, landing with the DNS cutover and the flag flip. _(v0.1.1: this replaces "configured to publish `web/` from `main` on merge; no publish from `dev`", which contradicted the committed workflow. Publishing from `dev` is a deliberate development-phase posture — it is what let S8.2 reach the real `https://cogis.ai` origin, which `localhost` and `file://` structurally cannot. Note the consequence: **anything merged to `dev` under `web/` is live on the public apex**, so `web/` must stay presentable on `dev`, not just on `main`. Publishing from `dev` **permanently** would be the Tier-3 deploy-topology change in §10 — this is a phase, with M8e as its end date.)_
+- Flag on the extension side flipped to `true` for a **local human smoke build only** — not for any published extension build. This lets the human verify the ChatGPT loop end-to-end on a real profile; the shipped extension version does not enable the flag until M8e. _(v0.1.2: superseded. The committed default is now `true` (§3.4), so a local flip is no longer needed for smoke and the uncommitted-flip discipline that went with it is retired. The rest of this scope item stands as the historical record of M8b.)_
+- `.github/workflows/pages.yml` publishes `web/` **from `dev`** for the duration of M8 development, which is the workflow already on disk and is not modified by M8b. The switch to publishing from `main` is **M8e** work, landing with the DNS cutover. _(v0.1.2: "and the flag flip" struck — the flip left M8e.)_ _(v0.1.1: this replaces "configured to publish `web/` from `main` on merge; no publish from `dev`", which contradicted the committed workflow. Publishing from `dev` is a deliberate development-phase posture — it is what let S8.2 reach the real `https://cogis.ai` origin, which `localhost` and `file://` structurally cannot. Note the consequence: **anything merged to `dev` under `web/` is live on the public apex**, so `web/` must stay presentable on `dev`, not just on `main`. Publishing from `dev` **permanently** would be the Tier-3 deploy-topology change in §10 — this is a phase, with M8e as its end date.)_
 
 **Behavioral AC (page).**
 
@@ -421,16 +421,19 @@ Follows the parent §10 pattern. Each M8x is its own PR against `dev`, human-mer
 4. Panel closed → zero observable effect on the page or the extension (M6 rule preserved).
 5. `npm test`, `npm run lint`, `npm run format:check` pass.
 
-### M8e — DNS cutover, flag flip, and smoke on real `cogis.ai`
+### M8e — DNS cutover and smoke on real `cogis.ai`
 
-**Goal.** Make the page live at `https://cogis.ai/` and enable the feature flag in the extension build that ships.
+**Goal.** Make the page live at `https://cogis.ai/` on its own domain, published from `main`, and smoke the shipped extension build against it.
+
+_(v0.1.2: retitled from "DNS cutover, flag flip, and smoke on real `cogis.ai`". The flag flip left M8e and landed early — see §3.4 and the changelog. M8e keeps the DNS cutover, the Pages publish-source move from `dev` to `main`, the full human smoke, and the rollback rehearsal. Removing the flip does **not** make AC #6 vacuous: rollback path (a) is still a real, rehearsable action, and is now the flag's primary remaining purpose.)_
 
 **Depends on:** S8.3, M8d merged.
 
 **Scope.**
 
 - DNS records applied per S8.3 finding (apex + `www` CNAME). GitHub Pages custom-domain set. Let's Encrypt cert issued and verified.
-- `WEB_SEARCH_SURFACE_ENABLED` flipped to `true` in the extension source; extension version bump per parent §3.10 (behavior change = version bump).
+- GitHub Pages publish source moved from `dev` to `main`, ending the development-phase posture recorded in §6 M8b (v0.1.1).
+- Extension version bump per parent §3.10 shipped with the smoke build.
 - Human smoke on `https://cogis.ai/` (not GH Pages preview URL) covering US-1 through US-7 on a real logged-in Chrome profile.
 - Rollback plan documented and rehearsed: (a) flip the flag back to `false` and ship an extension version bump — the page continues to render the install-gate forever; (b) if the page itself needs to disappear, revert the DNS record or unpublish the GitHub Pages custom domain — the extension continues to function via the popup.
 
@@ -504,6 +507,8 @@ Adds to parent §13:
 | Adding a page-side analytics or telemetry SDK | **Escalation** — parent §12 #14 + this addendum §4 non-goal |
 | Introducing a bundler or framework for `web/` | **Escalation** — parent §12 #6 |
 | Publishing `web/` from `dev` instead of `main` | **Tier 3** — deploy topology change |
+| Changing the committed default of `WEB_SEARCH_SURFACE_ENABLED` | **Tier 3** — requires an addendum bump _(added v0.1.2)_ |
+| Removing or weakening either flag-state case in the bridge harness | **Escalation** — retires the §6 M8e AC #6 rollback proof _(added v0.1.2)_ |
 
 ---
 
@@ -552,5 +557,6 @@ M8 sub-milestones will be handed off via `docs/handoff-prompts.md` in the same p
 
 | Version | Date | Change |
 | --- | --- | --- |
+| 0.1.2 | 2026-07-31 | **Flag default flipped to `true`.** Human-directed amendment. (1) **§3.4 — `WEB_SEARCH_SURFACE_ENABLED` default is now `true`**, replacing `false`. The original default guarded a surface with no page and no labs wired; the surface now renders all four labs (§6 M8c, merged) and the default had decayed into ceremony whose only running cost was an uncommitted local flip per smoke session. (2) **The off path is not surrendered.** The bridge harness must construct both the on and the off case from whichever literal is committed, rather than string-patching an assumed `false`. This is strictly more coverage than v0.1.1, where only the committed state was exercised. The `ships off` posture assertion in `tests/unit/web-bridge-flag-sync.test.js` is replaced by a mirror-consistency assertion — the two literals must agree, whatever they say. (3) **§6 M8e rescoped** to DNS cutover, the Pages publish-source move to `main`, smoke, and rollback rehearsal; the flip is no longer an M8e deliverable. AC #6 survives unchanged and becomes the flag's primary purpose. (4) **§10 — two rows added**: changing the committed default is Tier 3; removing either flag-state case from the harness is an Escalation. (5) **Ordering unchanged:** Web Store submission still waits on M8d (`web/privacy.html`, README/NOTICE deltas) and BL-004 icons. Flipping the default moves no other gate. |
 | 0.1.1 | 2026-07-31 | **S8.2 fold-back.** Records the closed S8.2 finding and fixes two statements that could not be implemented as written. (1) **§3.9 — re-emission amendment:** the page MAY re-emit `COGIS_HELLO` on a **100 ms** cadence carrying the **same nonce**, stopping on the first `COGIS_READY`, with the budget clock running from the **first** emit. A single HELLO at `DOMContentLoaded` or earlier is structurally lost against a `run_at: document_idle` bridge — measured live, gated on real hardware with zero drops recorded. No extension-side change: same-nonce repeats were already idempotent on the bridge. (2) **§3.9 / §5 — install-gate budget filled: `900 ms`**, Tier 2, defended against a throttled worst case of 665.3 ms and 0 false positives in 24 installed runs. (3) **§6 M8b AC #1 — origin corrected** from a GH Pages preview URL / `file://` (both unsatisfiable: the origin gate is string equality against `https://cogis.ai`) to the apex, with the runbook's origin-spoof recipe named as the sanctioned local-smoke fallback. (4) **§3.3 note and §6 M8b scope — Pages publish source corrected** to `dev` during M8 development, matching the committed `pages.yml`; the move to `main` is M8e. No code changes; `pages.yml` untouched; flag still `false`. |
 | 0.1.0 | 2026-07-30 | Initial Phase-0-style addendum for the M8 web search surface. Authors the two-deployable architecture (extension + `cogis.ai` static site under `web/`), the postMessage bridge with strict origin lock (`https://cogis.ai` string equality) and nonce echo, the `WEB_SEARCH_SURFACE_ENABLED` feature flag, the CSP lock (`connect-src 'none'`), the `www.cogis.ai` → apex redirect posture, the S8.1–S8.3 spike stubs, and the M8a–M8e sub-milestones with behavioral AC. Lists the surgical amendments to the parent blueprint (§11 of this addendum) to be applied in a follow-up docs PR after human merge. No code changes; no `web/` subtree yet; no manifest changes yet. |
