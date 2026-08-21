@@ -24,10 +24,18 @@ export const PLATFORMS = {
     loginUrl: 'https://chatgpt.com/',
     hostPatterns: ['https://chatgpt.com/*'],
   },
+  claude: {
+    id: 'claude',
+    label: 'Claude',
+    capability: 'full-text',
+    origin: 'https://claude.ai',
+    loginUrl: 'https://claude.ai/login',
+    hostPatterns: ['https://claude.ai/*'],
+  },
 };
 
 /** UI group order for implemented platforms, filled in as adapters land. */
-export const PLATFORM_ORDER = ['chatgpt'];
+export const PLATFORM_ORDER = ['chatgpt', 'claude'];
 
 export const FOOTNOTE_TEXT = 'Some AIs do not support full-text search.';
 

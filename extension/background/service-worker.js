@@ -2,12 +2,14 @@ import { MSG, createResultChunk, createPlatformDone } from '../lib/messaging.js'
 import { PLATFORM_ORDER } from '../lib/platforms.js';
 import { createRequestTracker, OVERALL_WALL_MS } from '../lib/timeouts.js';
 import { searchChatgpt } from '../lib/chatgpt-adapter.js';
+import { searchClaude } from '../lib/claude-adapter.js';
 
 const tracker = createRequestTracker();
 
 /** One search function per implemented lab; each returns a result descriptor and never throws. */
 const ADAPTERS = {
   chatgpt: searchChatgpt,
+  claude: searchClaude,
 };
 
 /**
