@@ -12,6 +12,6 @@
     "type": "module"
   },
   "permissions": [],
-  "host_permissions": [],
+  "host_permissions": ["https://chatgpt.com/*"],
   "content_scripts": []
 }

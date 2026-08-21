@@ -1,14 +1,18 @@
 import { MSG, createResultChunk, createPlatformDone } from '../lib/messaging.js';
 import { PLATFORM_ORDER } from '../lib/platforms.js';
 import { createRequestTracker, OVERALL_WALL_MS } from '../lib/timeouts.js';
+import { searchChatgpt } from '../lib/chatgpt-adapter.js';
 
 const tracker = createRequestTracker();
 
+/** One search function per implemented lab; each returns a result descriptor and never throws. */
+const ADAPTERS = {
+  chatgpt: searchChatgpt,
+};
+
 /**
  * Runs one platform's search and reports back to the popup via runtime
- * messages. No lab adapters are wired up yet — each one lands as its own
- * step once its live contract has been verified. Until then every platform
- * reports `unavailable`.
+ * messages. Platforms without an adapter yet report `unavailable`.
  * @param {string} requestId
  * @param {string} query
  * @param {string} platformId
@@ -16,20 +20,28 @@ const tracker = createRequestTracker();
 async function runPlatform(requestId, query, platformId) {
   if (!tracker.isActive(requestId)) return;
 
+  const adapter = ADAPTERS[platformId];
+  const outcome = adapter
+    ? await adapter(query)
+    : { status: 'unavailable', message: `${platformId} adapter not implemented yet` };
+
+  if (!tracker.isActive(requestId)) return;
   chrome.runtime
     .sendMessage(
       createResultChunk({
         requestId,
         platform: platformId,
-        status: 'unavailable',
-        message: `${platformId} adapter not implemented yet`,
+        status: outcome.status,
+        results: outcome.results,
+        message: outcome.message,
+        loginUrl: outcome.loginUrl,
       }),
     )
     .catch(() => {});
 
   if (!tracker.isActive(requestId)) return;
   chrome.runtime
-    .sendMessage(createPlatformDone({ requestId, platform: platformId, status: 'unavailable' }))
+    .sendMessage(createPlatformDone({ requestId, platform: platformId, status: outcome.status }))
     .catch(() => {});
 }
 
