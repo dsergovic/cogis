@@ -8,9 +8,10 @@
 }
 
 body {
-  width: 360px;
+  width: 100%;
+  box-sizing: border-box;
   margin: 0;
-  padding: 10px 12px 14px;
+  padding: 14px 16px 18px;
 }
 
 header h1 {

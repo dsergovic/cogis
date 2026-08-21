@@ -55,7 +55,7 @@ direct-API ones as a result — tracked in
 1. Open `chrome://extensions`
 2. Enable **Developer mode**
 3. **Load unpacked** → select the `extension/` directory in this repo
-4. Pin **Cogis — AI Search** and open the popup
+4. Pin **Cogis — AI Search** and click it — this opens the search UI as its own small window, centered over your current browser window (not the usual toolbar dropdown, which Chrome never lets an extension reposition)
 5. Stay logged into whichever labs you want to search, in the same Chrome profile
 6. After code changes, click **Reload** on the extension card
 

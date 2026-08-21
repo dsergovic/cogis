@@ -4,8 +4,7 @@
   "version": "0.1.0",
   "description": "Search your own ChatGPT, Claude, Gemini, Perplexity, and Grok conversation history from a single popup and jump straight back in. Dev-unpacked.",
   "action": {
-    "default_title": "Cogis — AI Search",
-    "default_popup": "popup/popup.html"
+    "default_title": "Cogis — AI Search"
   },
   "background": {
     "service_worker": "background/service-worker.js",

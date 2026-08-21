@@ -164,5 +164,16 @@ chrome.runtime.onMessage.addListener((message) => {
   }
 });
 
+// The popup is now its own small centered window (background/service-worker.js
+// opens it via chrome.windows.create), not the toolbar's anchored dropdown, so
+// it doesn't get the dropdown's built-in focus/dismiss behavior for free.
+input.focus();
+
+window.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') window.close();
+});
+
+window.addEventListener('blur', () => window.close());
+
 resetGroups();
 render();

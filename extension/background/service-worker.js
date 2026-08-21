@@ -9,6 +9,57 @@ import { searchGrok } from '../lib/grok-adapter.js';
 
 const tracker = createRequestTracker();
 
+const POPUP_WIDTH = 420;
+const POPUP_HEIGHT = 640;
+
+/** Id of the currently open popup window, if any — so a second icon click focuses it instead of opening a duplicate. */
+let popupWindowId = null;
+
+/**
+ * Open the popup as its own small window, centered over the browser window
+ * the user is currently looking at, instead of the default toolbar
+ * dropdown (which Chrome always anchors to the icon and never lets an
+ * extension reposition or center).
+ */
+async function openCenteredPopup() {
+  if (popupWindowId !== null) {
+    try {
+      await chrome.windows.update(popupWindowId, { focused: true });
+      return;
+    } catch {
+      popupWindowId = null;
+    }
+  }
+
+  const parent = await chrome.windows.getLastFocused({ windowTypes: ['normal'] }).catch(() => null);
+  const parentLeft = parent?.left ?? 0;
+  const parentTop = parent?.top ?? 0;
+  const parentWidth = parent?.width ?? POPUP_WIDTH;
+  const parentHeight = parent?.height ?? POPUP_HEIGHT;
+
+  const left = Math.max(0, Math.round(parentLeft + (parentWidth - POPUP_WIDTH) / 2));
+  const top = Math.max(0, Math.round(parentTop + (parentHeight - POPUP_HEIGHT) / 2));
+
+  const win = await chrome.windows.create({
+    url: chrome.runtime.getURL('popup/popup.html'),
+    type: 'popup',
+    width: POPUP_WIDTH,
+    height: POPUP_HEIGHT,
+    left,
+    top,
+    focused: true,
+  });
+  popupWindowId = win.id ?? null;
+}
+
+chrome.action.onClicked.addListener(() => {
+  openCenteredPopup().catch(() => {});
+});
+
+chrome.windows.onRemoved.addListener((closedWindowId) => {
+  if (closedWindowId === popupWindowId) popupWindowId = null;
+});
+
 /** One search function per implemented lab; each returns a result descriptor and never throws. */
 const ADAPTERS = {
   chatgpt: searchChatgpt,
