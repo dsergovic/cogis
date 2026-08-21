@@ -24,6 +24,8 @@ export default [
         setTimeout: 'readonly',
         clearTimeout: 'readonly',
         MutationObserver: 'readonly',
+        Event: 'readonly',
+        HTMLInputElement: 'readonly',
         crypto: 'readonly',
         self: 'readonly',
         location: 'readonly',

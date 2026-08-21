@@ -55,6 +55,7 @@
 
 import { anyDateToIso, stripForbiddenFields, pointerHasForbiddenFields } from './results.js';
 import { PLATFORM_TIMEOUT_MS, TAB_COMPLETE_MS, MAX_RESULTS_PER_PLATFORM } from './timeouts.js';
+import { waitForTabComplete, sendMessageWithInjectRetry } from './tab-messaging.js';
 
 const ORIGIN = 'https://www.perplexity.ai';
 
@@ -129,66 +130,6 @@ async function ensurePerplexityTab() {
 }
 
 /**
- * @param {number} tabId
- * @param {number} timeoutMs
- */
-function waitForTabComplete(tabId, timeoutMs) {
-  return new Promise((resolve) => {
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      chrome.tabs.onUpdated.removeListener(listener);
-      clearTimeout(timer);
-      resolve();
-    };
-    const listener = (updatedTabId, info) => {
-      if (updatedTabId === tabId && info.status === 'complete') finish();
-    };
-    chrome.tabs.onUpdated.addListener(listener);
-    const timer = setTimeout(finish, timeoutMs);
-    chrome.tabs.get(tabId).then((t) => {
-      if (t.status === 'complete') finish();
-    }, finish);
-  });
-}
-
-/**
- * @param {number} tabId
- * @param {unknown} message
- * @returns {Promise<any>}
- */
-function sendMessageToTab(tabId, message) {
-  return new Promise((resolve, reject) => {
-    chrome.tabs.sendMessage(tabId, message, (response) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-        return;
-      }
-      resolve(response);
-    });
-  });
-}
-
-/**
- * Send to a tab, and if nothing is listening — most commonly a perplexity.ai
- * tab that was already open before this extension (re)loaded, since Chrome
- * does not retroactively inject content scripts into already-open tabs —
- * inject content/perplexity.js and retry once.
- * @param {number} tabId
- * @param {unknown} message
- * @returns {Promise<any>}
- */
-async function sendMessageWithInjectRetry(tabId, message) {
-  try {
-    return await sendMessageToTab(tabId, message);
-  } catch {
-    await chrome.scripting.executeScript({ target: { tabId }, files: ['content/perplexity.js'] });
-    return sendMessageToTab(tabId, message);
-  }
-}
-
-/**
  * Run a Perplexity search. Returns a result descriptor the service worker
  * turns into a SEARCH_RESULT_CHUNK — never throws.
  * @param {string} query
@@ -212,7 +153,11 @@ export async function searchPerplexity(query) {
 
   try {
     const response = await Promise.race([
-      sendMessageWithInjectRetry(tabInfo.tabId, { type: PERPLEXITY_TAB_SEARCH, query }),
+      sendMessageWithInjectRetry(
+        tabInfo.tabId,
+        { type: PERPLEXITY_TAB_SEARCH, query },
+        'content/perplexity.js',
+      ),
       timeout,
     ]);
 

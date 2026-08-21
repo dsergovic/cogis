@@ -40,10 +40,18 @@ export const PLATFORMS = {
     loginUrl: 'https://www.perplexity.ai/',
     hostPatterns: ['https://www.perplexity.ai/*', 'https://perplexity.ai/*'],
   },
+  gemini: {
+    id: 'gemini',
+    label: 'Gemini',
+    capability: 'full-text',
+    origin: 'https://gemini.google.com',
+    loginUrl: 'https://gemini.google.com/app',
+    hostPatterns: ['https://gemini.google.com/*'],
+  },
 };
 
 /** UI group order for implemented platforms, filled in as adapters land. */
-export const PLATFORM_ORDER = ['chatgpt', 'claude', 'perplexity'];
+export const PLATFORM_ORDER = ['chatgpt', 'claude', 'perplexity', 'gemini'];
 
 export const FOOTNOTE_TEXT = 'Some AIs do not support full-text search.';
 

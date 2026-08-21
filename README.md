@@ -20,18 +20,34 @@ Early rebuild. See [Issues](https://github.com/dsergovic/cogis/issues) for what'
 | ---------- | ----------- | ---------- |
 | ChatGPT    | Done        | full-text  |
 | Claude     | Done        | full-text  |
-| Gemini     | Not started |            |
+| Gemini     | Done        | full-text  |
 | Perplexity | Done        | full-text  |
 | Grok (web) | Not started |            |
 
-**Full-text means the lab's own search, not ours.** ChatGPT and Claude both
-run genuine full-text search over message bodies, not just titles — Cogis
-just relays whatever the lab's own search API returns; it never reads,
-ranks, or re-filters conversation content itself. Two things follow from
-that: results can match on body text that doesn't appear anywhere in the
-title shown, and a multi-word query may be matched per-word (OR) rather
+**Full-text means the lab's own search, not ours.** ChatGPT, Claude,
+Perplexity, and Gemini all run genuine search over message bodies, not just
+titles — Cogis just relays whatever the lab's own search returns; it never
+reads, ranks, or re-filters conversation content itself. Two things follow
+from that: results can match on body text that doesn't appear anywhere in
+the title shown, and a multi-word query may be matched per-word (OR) rather
 than as an exact phrase, depending on how that lab's search works. That's
-the lab's relevance behavior, not a Cogis bug.
+the lab's relevance behavior, not a Cogis bug. Gemini goes further still —
+its search is semantic, not keyword-based, so it can return "relevant"
+results for a query with no literal word overlap at all, and will rarely if
+ever report zero results for an account with any chat history.
+
+ChatGPT, Claude, and Perplexity all expose an API their own official web
+app calls, reachable straight from the extension's background. Perplexity's
+edge additionally requires the request to originate from a real
+perplexity.ai page (not the extension background), so that one runs from a
+small content script in a background tab instead. Gemini has no such API to
+call at all — its search runs on Google's internal `batchexecute` RPC
+protocol with a session-bound token, which this project won't attempt to
+replicate — so Gemini is fully DOM-driven: a background tab navigates to
+Gemini's own "Search chats" UI, types the query in, and reads the rendered
+results. Both tab-driven labs are noticeably slower than the two
+direct-API ones as a result — tracked in
+[#48](https://github.com/dsergovic/cogis/issues/48), not addressed yet.
 
 ## Load unpacked
 

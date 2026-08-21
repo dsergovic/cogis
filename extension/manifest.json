@@ -16,12 +16,18 @@
     "https://chatgpt.com/*",
     "https://claude.ai/*",
     "https://www.perplexity.ai/*",
-    "https://perplexity.ai/*"
+    "https://perplexity.ai/*",
+    "https://gemini.google.com/*"
   ],
   "content_scripts": [
     {
       "matches": ["https://www.perplexity.ai/*", "https://perplexity.ai/*"],
       "js": ["content/perplexity.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://gemini.google.com/*"],
+      "js": ["content/gemini.js"],
       "run_at": "document_idle"
     }
   ]
