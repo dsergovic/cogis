@@ -28,8 +28,9 @@ Early rebuild. See [Issues](https://github.com/dsergovic/cogis/issues) for what'
 Perplexity, and Gemini all run genuine search over message bodies, not just
 titles — Cogis just relays whatever the lab's own search returns; it never
 reads, ranks, or re-filters conversation content itself. Two things follow
-from that: results can match on body text that doesn't appear anywhere in
-the title shown, and a multi-word query may be matched per-word (OR) rather
+from that: results can match on body text — or, confirmed live for Claude,
+the content of an attached file — that doesn't appear anywhere in the title
+shown, and a multi-word query may be matched per-word (OR) rather
 than as an exact phrase, depending on how that lab's search works. That's
 the lab's relevance behavior, not a Cogis bug. Gemini goes further still —
 its search is semantic, not keyword-based, so it can return "relevant"
