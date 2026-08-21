@@ -21,7 +21,7 @@ let watchdogTimer = null;
 /** @type {Record<string, { status: string, results: import('../lib/messaging.js').PointerRecord[], message?: string, loginUrl?: string }>} */
 let groups = {};
 
-/** Platforms the user has collapsed. Session-only UI state — not reset between searches. */
+/** Platforms the user has collapsed. Session-only UI state — cleared at the start of each new search. */
 const collapsedPlatforms = new Set();
 
 /**
@@ -58,9 +58,20 @@ function render() {
     const section = document.createElement('div');
     section.className = 'group';
 
+    const toggleCollapse = () => {
+      if (collapsedPlatforms.has(platformId)) {
+        collapsedPlatforms.delete(platformId);
+      } else {
+        collapsedPlatforms.add(platformId);
+      }
+      render();
+    };
+
     const heading = document.createElement('h2');
     const nameSpan = document.createElement('span');
+    nameSpan.className = 'name';
     nameSpan.textContent = platform?.label ?? platformId;
+    nameSpan.addEventListener('click', toggleCollapse);
     heading.appendChild(nameSpan);
     if (platform) {
       const capSpan = document.createElement('span');
@@ -77,14 +88,7 @@ function render() {
       'aria-label',
       `${isCollapsed ? 'Expand' : 'Collapse'} ${platform?.label ?? platformId}`,
     );
-    toggleBtn.addEventListener('click', () => {
-      if (collapsedPlatforms.has(platformId)) {
-        collapsedPlatforms.delete(platformId);
-      } else {
-        collapsedPlatforms.add(platformId);
-      }
-      render();
-    });
+    toggleBtn.addEventListener('click', toggleCollapse);
     heading.appendChild(toggleBtn);
     section.appendChild(heading);
 
@@ -132,6 +136,15 @@ function render() {
         a.rel = 'noopener noreferrer';
         a.title = hit.title;
         a.textContent = truncateTitle(hit.title);
+        a.addEventListener('click', (event) => {
+          const isExplicitNewTabGesture =
+            event.button === 1 || event.ctrlKey || event.metaKey || event.shiftKey;
+          if (isExplicitNewTabGesture) return; // leave the window open, as requested
+          // A plain click: let the link open (target="_blank" already sends it
+          // to a real browser tab), then dismiss this window like a modal that
+          // closes once you've navigated away.
+          window.close();
+        });
         li.appendChild(a);
         list.appendChild(li);
       }
@@ -154,6 +167,7 @@ function startSearch(query) {
   const requestId = crypto.randomUUID();
   activeRequestId = requestId;
   activeQuery = query;
+  collapsedPlatforms.clear();
   resetGroups('loading');
   render();
 

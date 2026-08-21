@@ -45,6 +45,10 @@ header h1 {
   gap: 6px;
 }
 
+.group h2 .name {
+  cursor: pointer;
+}
+
 .group .capability {
   font-weight: normal;
   color: gray;
@@ -55,10 +59,13 @@ header h1 {
   margin-left: auto;
   background: none;
   border: none;
-  padding: 0 2px;
-  font-size: 11px;
-  line-height: 1;
+  padding: 0;
+  font-family: inherit;
+  font-weight: normal;
+  font-style: normal;
+  font-size: 10px;
   color: gray;
+  line-height: 1;
   cursor: pointer;
 }
 
