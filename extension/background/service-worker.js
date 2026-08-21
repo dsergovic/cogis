@@ -3,6 +3,7 @@ import { PLATFORM_ORDER } from '../lib/platforms.js';
 import { createRequestTracker, OVERALL_WALL_MS } from '../lib/timeouts.js';
 import { searchChatgpt } from '../lib/chatgpt-adapter.js';
 import { searchClaude } from '../lib/claude-adapter.js';
+import { searchPerplexity } from '../lib/perplexity-adapter.js';
 
 const tracker = createRequestTracker();
 
@@ -10,6 +11,7 @@ const tracker = createRequestTracker();
 const ADAPTERS = {
   chatgpt: searchChatgpt,
   claude: searchClaude,
+  perplexity: searchPerplexity,
 };
 
 /**

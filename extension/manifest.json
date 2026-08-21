@@ -12,6 +12,11 @@
     "type": "module"
   },
   "permissions": [],
-  "host_permissions": ["https://chatgpt.com/*", "https://claude.ai/*"],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://claude.ai/*",
+    "https://www.perplexity.ai/*",
+    "https://perplexity.ai/*"
+  ],
   "content_scripts": []
 }

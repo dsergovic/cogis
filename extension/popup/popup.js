@@ -2,6 +2,12 @@ import { MSG, createSearchRequest, shouldApplyChunk, normalizeQuery } from '../l
 import { PLATFORM_ORDER, getPlatform, FOOTNOTE_TEXT } from '../lib/platforms.js';
 import { resolveResultHref } from '../lib/results.js';
 import { POPUP_WATCHDOG_MS } from '../lib/timeouts.js';
+import { perplexityPrefillUrl } from '../lib/perplexity-adapter.js';
+
+/** Per-platform prefill URL builders, for platforms whose adapter supports one. */
+const PREFILL_BUILDERS = {
+  perplexity: perplexityPrefillUrl,
+};
 
 const form = document.getElementById('search-form');
 const input = document.getElementById('query-input');
@@ -10,6 +16,7 @@ const emptyHintEl = document.getElementById('empty-hint');
 const footnoteEl = document.getElementById('footnote');
 
 let activeRequestId = null;
+let activeQuery = '';
 let watchdogTimer = null;
 /** @type {Record<string, { status: string, results: import('../lib/messaging.js').PointerRecord[], message?: string, loginUrl?: string }>} */
 let groups = {};
@@ -85,7 +92,8 @@ function render() {
       for (const hit of group.results) {
         const li = document.createElement('li');
         const a = document.createElement('a');
-        a.href = resolveResultHref(hit, null, platform?.origin ?? '#');
+        const prefillUrl = PREFILL_BUILDERS[platformId]?.(activeQuery) ?? null;
+        a.href = resolveResultHref(hit, prefillUrl, platform?.origin ?? '#');
         a.target = '_blank';
         a.rel = 'noopener noreferrer';
         a.textContent = hit.title;
@@ -109,6 +117,7 @@ function clearWatchdog() {
 function startSearch(query) {
   const requestId = crypto.randomUUID();
   activeRequestId = requestId;
+  activeQuery = query;
   resetGroups();
   render();
 

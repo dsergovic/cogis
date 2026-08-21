@@ -16,13 +16,22 @@ See [`NOTICE`](./NOTICE) for the full privacy/ToS posture.
 
 Early rebuild. See [Issues](https://github.com/dsergovic/cogis/issues) for what's tracked. Labs land one at a time, each verified against its live, logged-in contract before the adapter is written — no lab ships from guesswork.
 
-| Lab        | Status      |
-| ---------- | ----------- |
-| ChatGPT    | Not started |
-| Claude     | Not started |
-| Gemini     | Not started |
-| Perplexity | Not started |
-| Grok (web) | Not started |
+| Lab        | Status      | Capability |
+| ---------- | ----------- | ---------- |
+| ChatGPT    | Done        | full-text  |
+| Claude     | Done        | full-text  |
+| Gemini     | Not started |            |
+| Perplexity | Done        | full-text  |
+| Grok (web) | Not started |            |
+
+**Full-text means the lab's own search, not ours.** ChatGPT and Claude both
+run genuine full-text search over message bodies, not just titles — Cogis
+just relays whatever the lab's own search API returns; it never reads,
+ranks, or re-filters conversation content itself. Two things follow from
+that: results can match on body text that doesn't appear anywhere in the
+title shown, and a multi-word query may be matched per-word (OR) rather
+than as an exact phrase, depending on how that lab's search works. That's
+the lab's relevance behavior, not a Cogis bug.
 
 ## Load unpacked
 
