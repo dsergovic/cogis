@@ -17,7 +17,8 @@
     "https://claude.ai/*",
     "https://www.perplexity.ai/*",
     "https://perplexity.ai/*",
-    "https://gemini.google.com/*"
+    "https://gemini.google.com/*",
+    "https://grok.com/*"
   ],
   "content_scripts": [
     {

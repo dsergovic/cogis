@@ -16,17 +16,17 @@ See [`NOTICE`](./NOTICE) for the full privacy/ToS posture.
 
 Early rebuild. See [Issues](https://github.com/dsergovic/cogis/issues) for what's tracked. Labs land one at a time, each verified against its live, logged-in contract before the adapter is written — no lab ships from guesswork.
 
-| Lab        | Status      | Capability |
-| ---------- | ----------- | ---------- |
-| ChatGPT    | Done        | full-text  |
-| Claude     | Done        | full-text  |
-| Gemini     | Done        | full-text  |
-| Perplexity | Done        | full-text  |
-| Grok (web) | Not started |            |
+| Lab        | Status | Capability |
+| ---------- | ------ | ---------- |
+| ChatGPT    | Done   | full-text  |
+| Claude     | Done   | full-text  |
+| Gemini     | Done   | full-text  |
+| Perplexity | Done   | full-text  |
+| Grok (web) | Done   | full-text  |
 
 **Full-text means the lab's own search, not ours.** ChatGPT, Claude,
-Perplexity, and Gemini all run genuine search over message bodies, not just
-titles — Cogis just relays whatever the lab's own search returns; it never
+Perplexity, Gemini, and Grok all run genuine search over message bodies,
+not just titles — Cogis just relays whatever the lab's own search returns; it never
 reads, ranks, or re-filters conversation content itself. Two things follow
 from that: results can match on body text — or, confirmed live for Claude,
 the content of an attached file — that doesn't appear anywhere in the title
@@ -37,8 +37,8 @@ its search is semantic, not keyword-based, so it can return "relevant"
 results for a query with no literal word overlap at all, and will rarely if
 ever report zero results for an account with any chat history.
 
-ChatGPT, Claude, and Perplexity all expose an API their own official web
-app calls, reachable straight from the extension's background. Perplexity's
+ChatGPT, Claude, Grok, and Perplexity all expose an API their own official
+web app calls, reachable straight from the extension's background. Perplexity's
 edge additionally requires the request to originate from a real
 perplexity.ai page (not the extension background), so that one runs from a
 small content script in a background tab instead. Gemini has no such API to

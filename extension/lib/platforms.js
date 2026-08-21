@@ -48,10 +48,18 @@ export const PLATFORMS = {
     loginUrl: 'https://gemini.google.com/app',
     hostPatterns: ['https://gemini.google.com/*'],
   },
+  grok: {
+    id: 'grok',
+    label: 'Grok',
+    capability: 'full-text',
+    origin: 'https://grok.com',
+    loginUrl: 'https://grok.com/',
+    hostPatterns: ['https://grok.com/*'],
+  },
 };
 
 /** UI group order for implemented platforms, filled in as adapters land. */
-export const PLATFORM_ORDER = ['chatgpt', 'claude', 'perplexity', 'gemini'];
+export const PLATFORM_ORDER = ['chatgpt', 'claude', 'perplexity', 'gemini', 'grok'];
 
 export const FOOTNOTE_TEXT = 'Some AIs do not support full-text search.';
 
