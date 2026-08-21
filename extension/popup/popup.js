@@ -1,6 +1,6 @@
 import { MSG, createSearchRequest, shouldApplyChunk, normalizeQuery } from '../lib/messaging.js';
 import { PLATFORM_ORDER, getPlatform, FOOTNOTE_TEXT } from '../lib/platforms.js';
-import { resolveResultHref } from '../lib/results.js';
+import { resolveResultHref, truncateTitle } from '../lib/results.js';
 import { POPUP_WATCHDOG_MS } from '../lib/timeouts.js';
 import { perplexityPrefillUrl } from '../lib/perplexity-adapter.js';
 
@@ -96,7 +96,8 @@ function render() {
         a.href = resolveResultHref(hit, prefillUrl, platform?.origin ?? '#');
         a.target = '_blank';
         a.rel = 'noopener noreferrer';
-        a.textContent = hit.title;
+        a.title = hit.title;
+        a.textContent = truncateTitle(hit.title);
         li.appendChild(a);
         list.appendChild(li);
       }

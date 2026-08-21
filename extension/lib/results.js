@@ -80,6 +80,24 @@ export function pointerHasForbiddenFields(pointer) {
   return FORBIDDEN_BODY_KEYS.some((k) => Object.prototype.hasOwnProperty.call(pointer, k));
 }
 
+/** Default cutoff for `truncateTitle` — long enough to identify a chat, short enough to scan a list. */
+export const TITLE_DISPLAY_MAX = 150;
+
+/**
+ * Truncate a title for display only. Some labs use the first message as the
+ * title for an otherwise-untitled chat, which can run to paragraph length —
+ * this keeps the result list scannable. The pointer's own `title` field is
+ * left untouched; only call this at render time.
+ * @param {string} title
+ * @param {number} [maxLength]
+ * @returns {string}
+ */
+export function truncateTitle(title, maxLength = TITLE_DISPLAY_MAX) {
+  if (typeof title !== 'string') return '';
+  if (title.length <= maxLength) return title;
+  return `${title.slice(0, maxLength).trimEnd()}…`;
+}
+
 /**
  * Client-side title substring filter, for title-match platforms.
  * @param {import('./messaging.js').PointerRecord[]} pointers

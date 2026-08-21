@@ -7,6 +7,8 @@ import {
   filterPointersByTitle,
   dedupePointers,
   resolveResultHref,
+  truncateTitle,
+  TITLE_DISPLAY_MAX,
 } from '../../extension/lib/results.js';
 
 describe('unixTimeToIso', () => {
@@ -111,5 +113,27 @@ describe('resolveResultHref', () => {
   it('falls back to home otherwise', () => {
     expect(resolveResultHref({}, null, 'https://home')).toBe('https://home');
     expect(resolveResultHref(null, null, 'https://home')).toBe('https://home');
+  });
+});
+
+describe('truncateTitle', () => {
+  it('leaves a short title untouched', () => {
+    expect(truncateTitle('Brussels sprouts recipe')).toBe('Brussels sprouts recipe');
+  });
+
+  it('truncates a title longer than the default cutoff with an ellipsis', () => {
+    const long = 'x'.repeat(TITLE_DISPLAY_MAX + 50);
+    const result = truncateTitle(long);
+    expect(result.length).toBe(TITLE_DISPLAY_MAX + 1);
+    expect(result.endsWith('…')).toBe(true);
+  });
+
+  it('honors a custom maxLength', () => {
+    expect(truncateTitle('abcdefghij', 5)).toBe('abcde…');
+  });
+
+  it('returns an empty string for non-string input', () => {
+    expect(truncateTitle(null)).toBe('');
+    expect(truncateTitle(undefined)).toBe('');
   });
 });
