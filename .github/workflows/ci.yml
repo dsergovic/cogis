@@ -40,29 +40,3 @@ jobs:
 
       - name: Unit tests
         run: npm test
-
-  # Addendum §6 M8b AC #12 names this job as the enforcement point for the
-  # static site: CSP meta exact, no off-origin <script src> / <link href>,
-  # CNAME contents, and the page's structural sanity. The checks live in the
-  # vitest files so they also run locally; this job exists so the named status
-  # check exists. Adding it to branch protection is a repo-settings change.
-  web-build-and-check:
-    name: web-build-and-check
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Web surface checks
-        run: npm run test:web

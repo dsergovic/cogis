@@ -1,25 +1,25 @@
 /** Per-platform search budget (ms) — includes tab prep + search. */
 export const PLATFORM_TIMEOUT_MS = 8000;
 
-/** Sub-budget for waiting on a newly opened ChatGPT tab (ms). */
+/** Sub-budget for waiting on a newly opened lab tab (ms). */
 export const TAB_COMPLETE_MS = 3000;
 
 /** Overall wall clock for a search request (ms). */
 export const OVERALL_WALL_MS = 15000;
 
-/** Popup safety net after wall (ms). */
+/** Popup safety net after wall (ms) — clears any group still `loading`. */
 export const POPUP_WATCHDOG_MS = OVERALL_WALL_MS + 500;
 
-/** Default max results rendered per platform (Tier 2). */
+/** Default max results rendered per platform. */
 export const MAX_RESULTS_PER_PLATFORM = 20;
 
 /**
  * Race a promise against a timeout. Rejects with a TimeoutError-like Error.
+ * @template T
  * @param {Promise<T>} promise
  * @param {number} ms
  * @param {string} [label]
  * @returns {Promise<T>}
- * @template T
  */
 export function withTimeout(promise, ms, label = 'operation') {
   return new Promise((resolve, reject) => {
@@ -44,7 +44,9 @@ export function withTimeout(promise, ms, label = 'operation') {
 }
 
 /**
- * Create a cancelable request tracker for requestId isolation.
+ * Create a cancelable request tracker for requestId isolation: a new search
+ * supersedes the previous one, and late chunks from a superseded id are
+ * dropped before they reach the popup.
  * @returns {{ getActiveId: () => string|null, begin: (id: string) => void, cancel: (id?: string) => boolean, isActive: (id: string) => boolean }}
  */
 export function createRequestTracker() {

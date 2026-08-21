@@ -1,322 +1,158 @@
-import {
-  MSG,
-  createSearchRequest,
-  createSearchCancel,
-  normalizeQuery,
-  shouldApplyChunk,
-} from '../lib/messaging.js';
-import { PLATFORMS, PLATFORM_ORDER, loginRequiredCopy, unavailableCopy } from '../lib/platforms.js';
+import { MSG, createSearchRequest, shouldApplyChunk, normalizeQuery } from '../lib/messaging.js';
+import { PLATFORM_ORDER, getPlatform, FOOTNOTE_TEXT } from '../lib/platforms.js';
 import { resolveResultHref } from '../lib/results.js';
 import { POPUP_WATCHDOG_MS } from '../lib/timeouts.js';
-import { shouldWatchdogTimeout } from '../lib/orchestration.js';
-import { groupClassName, nextCollapsedState } from '../lib/popup-collapse.js';
 
-const form = document.getElementById('cogis-search-form');
-const input = /** @type {HTMLInputElement} */ (document.getElementById('cogis-query'));
-const hint = document.getElementById('cogis-hint');
-const debugLink = /** @type {HTMLAnchorElement|null} */ (
-  document.getElementById('cogis-debug-link')
-);
+const form = document.getElementById('search-form');
+const input = document.getElementById('query-input');
+const resultsEl = document.getElementById('results');
+const emptyHintEl = document.getElementById('empty-hint');
+const footnoteEl = document.getElementById('footnote');
 
-if (debugLink) {
-  debugLink.href = chrome.runtime.getURL('debug/panel.html');
-}
-
-/** @type {string|null} */
 let activeRequestId = null;
-/** @type {string|null} */
-let activeQuery = null;
-/** @type {Map<string, ReturnType<typeof setTimeout>>} */
-const watchdogTimers = new Map();
+let watchdogTimer = null;
+/** @type {Record<string, { status: string, results: import('../lib/messaging.js').PointerRecord[], message?: string, loginUrl?: string }>} */
+let groups = {};
 
-function newRequestId() {
-  if (globalThis.crypto?.randomUUID) return crypto.randomUUID();
-  return `req_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+function resetGroups() {
+  groups = {};
+  for (const platformId of PLATFORM_ORDER) {
+    groups[platformId] = { status: 'loading', results: [] };
+  }
 }
 
-/**
- * @param {string} platformId
- */
-function groupEl(platformId) {
-  return document.querySelector(`[data-cogis-platform="${platformId}"]`);
-}
+function render() {
+  resultsEl.replaceChildren();
 
-/**
- * @param {string} [platformId]
- */
-function clearWatchdog(platformId) {
-  if (platformId) {
-    const timer = watchdogTimers.get(platformId);
-    if (timer != null) {
-      clearTimeout(timer);
-      watchdogTimers.delete(platformId);
-    }
+  if (PLATFORM_ORDER.length === 0) {
+    const p = document.createElement('p');
+    p.className = 'hint';
+    p.textContent = 'No labs configured yet.';
+    resultsEl.appendChild(p);
+    footnoteEl.hidden = true;
     return;
   }
-  for (const timer of watchdogTimers.values()) clearTimeout(timer);
-  watchdogTimers.clear();
-}
 
-/**
- * @param {string} requestId
- * @param {string} platformId
- */
-function armWatchdog(requestId, platformId) {
-  clearWatchdog(platformId);
-  const timer = setTimeout(() => {
-    const el = groupEl(platformId);
-    const status = el?.dataset.cogisStatus ?? 'idle';
-    if (
-      shouldWatchdogTimeout({
-        activeRequestId,
-        watchdogRequestId: requestId,
-        status,
-      })
-    ) {
-      setGroupState(platformId, 'timeout', {
-        message: unavailableCopy(platformId),
-      });
+  const anyTitleMatch = PLATFORM_ORDER.some((id) => getPlatform(id)?.capability === 'title-match');
+  footnoteEl.hidden = !anyTitleMatch;
+  footnoteEl.textContent = FOOTNOTE_TEXT;
+
+  for (const platformId of PLATFORM_ORDER) {
+    const platform = getPlatform(platformId);
+    const group = groups[platformId] ?? { status: 'idle', results: [] };
+
+    const section = document.createElement('div');
+    section.className = 'group';
+
+    const heading = document.createElement('h2');
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = platform?.label ?? platformId;
+    heading.appendChild(nameSpan);
+    if (platform) {
+      const capSpan = document.createElement('span');
+      capSpan.className = 'capability';
+      capSpan.textContent = platform.capability === 'full-text' ? 'full-text' : 'title-match';
+      heading.appendChild(capSpan);
     }
-  }, POPUP_WATCHDOG_MS);
-  watchdogTimers.set(platformId, timer);
-}
+    section.appendChild(heading);
 
-/**
- * @param {Element} group
- * @returns {boolean}
- */
-function isGroupCollapsed(group) {
-  return group.getAttribute('data-cogis-collapsed') === 'true';
-}
-
-/**
- * Session-only collapse (BL-020) — DOM dataset only; no persistent prefs.
- * @param {Element} group
- * @param {boolean} collapsed
- */
-function applyGroupCollapsed(group, collapsed) {
-  const platformId = group.getAttribute('data-cogis-platform') ?? 'platform';
-  const label = PLATFORMS[platformId]?.label ?? platformId;
-  group.setAttribute('data-cogis-collapsed', collapsed ? 'true' : 'false');
-  const status = group.getAttribute('data-cogis-status') ?? 'idle';
-  group.className = groupClassName(status, collapsed);
-
-  const btn = group.querySelector('[data-cogis-collapse]');
-  if (btn) {
-    btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-    btn.setAttribute('title', collapsed ? `Expand ${label}` : `Collapse ${label}`);
-    const sr = btn.querySelector('.cogis-sr-only');
-    if (sr) {
-      sr.textContent = collapsed ? `Expand ${label} results` : `Collapse ${label} results`;
-    }
-  }
-}
-
-/**
- * @param {string} platformId
- * @param {string} status
- * @param {{ message?: string, loginUrl?: string, results?: import('../lib/messaging.js').PointerRecord[] }} [opts]
- */
-function setGroupState(platformId, status, opts = {}) {
-  const el = groupEl(platformId);
-  if (!el) return;
-
-  el.dataset.cogisStatus = status;
-  el.className = groupClassName(status, isGroupCollapsed(el));
-
-  const statusText = el.querySelector('[data-cogis-status-text]');
-  const list = el.querySelector('[data-cogis-list]');
-  if (!statusText || !list) return;
-
-  list.replaceChildren();
-  statusText.replaceChildren();
-
-  const platform = PLATFORMS[platformId];
-  const loginUrl = opts.loginUrl ?? platform?.loginUrl ?? '#';
-
-  switch (status) {
-    case 'idle':
-      break;
-    case 'loading':
-      statusText.textContent = 'Searching…';
-      break;
-    case 'ready':
-      renderResults(list, opts.results ?? [], platformId);
-      break;
-    case 'empty':
-      statusText.textContent = 'No matching chats.';
-      break;
-    case 'login_required':
-      statusText.append(
-        document.createTextNode(`${opts.message ?? loginRequiredCopy(platformId)} `),
-      );
-      {
+    if (group.status === 'loading') {
+      const note = document.createElement('p');
+      note.className = 'status-note';
+      note.textContent = 'Searching…';
+      section.appendChild(note);
+    } else if (group.status === 'login_required') {
+      const note = document.createElement('p');
+      note.className = 'status-note';
+      note.textContent = group.message || `Please log in to ${platform?.label ?? platformId}`;
+      section.appendChild(note);
+    } else if (group.status === 'unavailable' || group.status === 'timeout') {
+      const note = document.createElement('p');
+      note.className = 'status-note';
+      note.textContent =
+        group.message ||
+        (group.status === 'timeout'
+          ? `${platform?.label ?? platformId} timed out.`
+          : `${platform?.label ?? platformId} is temporarily unavailable.`);
+      section.appendChild(note);
+    } else if (group.status === 'empty') {
+      const note = document.createElement('p');
+      note.className = 'status-note';
+      note.textContent = 'No results.';
+      section.appendChild(note);
+    } else if (group.status === 'ready') {
+      const list = document.createElement('ul');
+      for (const hit of group.results) {
+        const li = document.createElement('li');
         const a = document.createElement('a');
-        a.href = loginUrl;
+        a.href = resolveResultHref(hit, null, platform?.origin ?? '#');
         a.target = '_blank';
         a.rel = 'noopener noreferrer';
-        a.className = 'cogis-login-link';
-        a.textContent = `Open ${platform?.label ?? platformId}`;
-        statusText.append(a);
+        a.textContent = hit.title;
+        li.appendChild(a);
+        list.appendChild(li);
       }
-      break;
-    case 'unavailable':
-    case 'timeout':
-      statusText.textContent = opts.message ?? unavailableCopy(platformId);
-      break;
-    default:
-      break;
-  }
-
-  if (status !== 'loading') {
-    clearWatchdog(platformId);
-  }
-}
-
-/**
- * @param {Element} list
- * @param {import('../lib/messaging.js').PointerRecord[]} results
- * @param {string} platformId
- */
-function renderResults(list, results, platformId) {
-  for (const hit of results) {
-    const li = document.createElement('li');
-    li.className = 'cogis-result-item';
-
-    const a = document.createElement('a');
-    a.className = 'cogis-result-link';
-    a.href = resolveResultHref(hit, platformId, activeQuery, PLATFORMS[platformId]?.origin);
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-
-    const title = document.createElement('span');
-    title.className = 'cogis-result-title';
-    title.textContent = hit.title;
-
-    a.append(title);
-
-    if (hit.dateIso) {
-      const date = document.createElement('span');
-      date.className = 'cogis-result-date';
-      date.textContent = formatDate(hit.dateIso);
-      a.append(date);
+      section.appendChild(list);
     }
 
-    li.append(a);
-    list.append(li);
+    resultsEl.appendChild(section);
   }
 }
 
-/**
- * @param {string} iso
- */
-function formatDate(iso) {
-  try {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return '';
-    return d.toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  } catch {
-    return '';
+function clearWatchdog() {
+  if (watchdogTimer) {
+    clearTimeout(watchdogTimer);
+    watchdogTimer = null;
   }
 }
 
-function clearResultsUi() {
-  for (const id of PLATFORM_ORDER) {
-    setGroupState(id, 'idle');
-  }
-}
-
-function showHint(visible) {
-  if (!hint) return;
-  hint.hidden = !visible;
-}
-
-function cancelActive() {
-  if (!activeRequestId) return;
-  const id = activeRequestId;
-  activeRequestId = null;
-  activeQuery = null;
-  clearWatchdog();
-  chrome.runtime.sendMessage(createSearchCancel({ requestId: id })).catch(() => {});
-}
-
-function submitSearch(rawQuery) {
-  const query = normalizeQuery(rawQuery);
-  if (!query) {
-    cancelActive();
-    clearResultsUi();
-    showHint(true);
-    return;
-  }
-
-  showHint(false);
-  cancelActive();
-
-  const requestId = newRequestId();
+function startSearch(query) {
+  const requestId = crypto.randomUUID();
   activeRequestId = requestId;
-  activeQuery = query;
+  resetGroups();
+  render();
 
-  for (const id of PLATFORM_ORDER) {
-    setGroupState(id, 'loading');
-    armWatchdog(requestId, id);
-  }
+  chrome.runtime.sendMessage(createSearchRequest({ requestId, query })).catch(() => {});
 
-  const msg = createSearchRequest({
-    requestId,
-    query,
-    platforms: [...PLATFORM_ORDER],
-  });
-
-  chrome.runtime.sendMessage(msg).catch(() => {
-    if (shouldApplyChunk(activeRequestId, { requestId })) {
-      for (const id of PLATFORM_ORDER) {
-        setGroupState(id, 'unavailable');
+  clearWatchdog();
+  watchdogTimer = setTimeout(() => {
+    if (activeRequestId !== requestId) return;
+    for (const platformId of PLATFORM_ORDER) {
+      if (groups[platformId]?.status === 'loading') {
+        groups[platformId] = { status: 'timeout', results: [] };
       }
     }
-  });
+    render();
+  }, POPUP_WATCHDOG_MS);
 }
 
-form?.addEventListener('submit', (event) => {
+form.addEventListener('submit', (event) => {
   event.preventDefault();
-  submitSearch(input?.value ?? '');
+  const query = normalizeQuery(input.value);
+  if (!query) return;
+  emptyHintEl.hidden = true;
+  startSearch(query);
 });
-
-document.getElementById('cogis-results')?.addEventListener('click', (event) => {
-  const target = /** @type {HTMLElement} */ (event.target);
-  const btn = target.closest?.('[data-cogis-collapse]');
-  if (!btn) return;
-  const group = btn.closest?.('[data-cogis-platform]');
-  if (!group) return;
-  applyGroupCollapsed(group, nextCollapsedState(isGroupCollapsed(group)));
-});
-
-// No live-as-you-type search — only Enter / Search button via form submit.
 
 chrome.runtime.onMessage.addListener((message) => {
   if (!message || typeof message.type !== 'string') return;
+  if (!shouldApplyChunk(activeRequestId, message)) return;
 
   if (message.type === MSG.SEARCH_RESULT_CHUNK) {
-    if (!shouldApplyChunk(activeRequestId, message)) return;
-    if (!PLATFORM_ORDER.includes(message.platform)) return;
-
-    if (
-      message.errorCode &&
-      message.status &&
-      message.status !== 'loading' &&
-      message.status !== 'ready' &&
-      message.status !== 'idle'
-    ) {
-      console.info('[cogis]', message.platform, message.status, message.errorCode);
-    }
-
-    setGroupState(message.platform, message.status, {
+    groups[message.platform] = {
+      status: message.status,
+      results: message.results ?? [],
       message: message.message,
       loginUrl: message.loginUrl,
-      results: message.results,
-    });
+    };
+    render();
+  } else if (message.type === MSG.SEARCH_PLATFORM_DONE) {
+    if (groups[message.platform]) {
+      groups[message.platform].status = message.status;
+    }
+    render();
   }
 });
+
+resetGroups();
+render();

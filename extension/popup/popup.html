@@ -2,151 +2,24 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Cogis — AI Search</title>
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
-    <div class="cogis-shell">
-      <header class="cogis-header">
-        <h1 class="cogis-brand">Cogis — AI Search</h1>
-      </header>
-
-      <form id="cogis-search-form" class="cogis-search" autocomplete="off">
-        <label class="cogis-sr-only" for="cogis-query">Search query</label>
-        <input
-          id="cogis-query"
-          class="cogis-query"
-          type="search"
-          name="query"
-          placeholder="Search your chats…"
-          maxlength="500"
-          autofocus
-        />
-        <button id="cogis-search-btn" class="cogis-search-btn" type="submit">Search</button>
-      </form>
-
-      <p id="cogis-hint" class="cogis-hint" hidden>Type a query and press Enter.</p>
-
-      <section id="cogis-results" class="cogis-results" aria-live="polite">
-        <div
-          class="cogis-group cogis-group--idle"
-          data-cogis-platform="chatgpt"
-          data-cogis-status="idle"
-          data-cogis-collapsed="false"
-        >
-          <div class="cogis-group-header">
-            <button
-              type="button"
-              class="cogis-collapse-btn"
-              data-cogis-collapse
-              aria-expanded="true"
-              aria-controls="cogis-body-chatgpt"
-              title="Collapse ChatGPT"
-            >
-              <span class="cogis-collapse-icon" aria-hidden="true">▾</span>
-              <span class="cogis-sr-only">Collapse ChatGPT results</span>
-            </button>
-            <span class="cogis-group-title">ChatGPT</span>
-            <span class="cogis-capability" data-cogis-capability>full-text</span>
-          </div>
-          <div class="cogis-group-body" id="cogis-body-chatgpt">
-            <p class="cogis-group-status" data-cogis-status-text></p>
-            <ul class="cogis-result-list" data-cogis-list></ul>
-          </div>
-        </div>
-
-        <div
-          class="cogis-group cogis-group--idle"
-          data-cogis-platform="perplexity"
-          data-cogis-status="idle"
-          data-cogis-collapsed="false"
-        >
-          <div class="cogis-group-header">
-            <button
-              type="button"
-              class="cogis-collapse-btn"
-              data-cogis-collapse
-              aria-expanded="true"
-              aria-controls="cogis-body-perplexity"
-              title="Collapse Perplexity"
-            >
-              <span class="cogis-collapse-icon" aria-hidden="true">▾</span>
-              <span class="cogis-sr-only">Collapse Perplexity results</span>
-            </button>
-            <span class="cogis-group-title">Perplexity</span>
-            <span class="cogis-capability" data-cogis-capability>title-match</span>
-          </div>
-          <div class="cogis-group-body" id="cogis-body-perplexity">
-            <p class="cogis-group-status" data-cogis-status-text></p>
-            <ul class="cogis-result-list" data-cogis-list></ul>
-          </div>
-        </div>
-
-        <div
-          class="cogis-group cogis-group--idle"
-          data-cogis-platform="claude"
-          data-cogis-status="idle"
-          data-cogis-collapsed="false"
-        >
-          <div class="cogis-group-header">
-            <button
-              type="button"
-              class="cogis-collapse-btn"
-              data-cogis-collapse
-              aria-expanded="true"
-              aria-controls="cogis-body-claude"
-              title="Collapse Claude"
-            >
-              <span class="cogis-collapse-icon" aria-hidden="true">▾</span>
-              <span class="cogis-sr-only">Collapse Claude results</span>
-            </button>
-            <span class="cogis-group-title">Claude</span>
-            <span class="cogis-capability" data-cogis-capability>title-match</span>
-          </div>
-          <div class="cogis-group-body" id="cogis-body-claude">
-            <p class="cogis-group-status" data-cogis-status-text></p>
-            <ul class="cogis-result-list" data-cogis-list></ul>
-          </div>
-        </div>
-
-        <div
-          class="cogis-group cogis-group--idle"
-          data-cogis-platform="gemini"
-          data-cogis-status="idle"
-          data-cogis-collapsed="false"
-        >
-          <div class="cogis-group-header">
-            <button
-              type="button"
-              class="cogis-collapse-btn"
-              data-cogis-collapse
-              aria-expanded="true"
-              aria-controls="cogis-body-gemini"
-              title="Collapse Gemini"
-            >
-              <span class="cogis-collapse-icon" aria-hidden="true">▾</span>
-              <span class="cogis-sr-only">Collapse Gemini results</span>
-            </button>
-            <span class="cogis-group-title">Gemini</span>
-            <span class="cogis-capability" data-cogis-capability>title-match</span>
-          </div>
-          <div class="cogis-group-body" id="cogis-body-gemini">
-            <p class="cogis-group-status" data-cogis-status-text></p>
-            <ul class="cogis-result-list" data-cogis-list></ul>
-          </div>
-        </div>
-      </section>
-
-      <footer class="cogis-footer">
-        <p class="cogis-footnote">Some AIs do not support full-text search.</p>
-        <p class="cogis-debug-foot">
-          <a id="cogis-debug-link" class="cogis-debug-link" href="#" target="_blank" rel="noopener"
-            >Debug panel</a
-          >
-        </p>
-      </footer>
-    </div>
+    <header>
+      <h1>Cogis</h1>
+    </header>
+    <form id="search-form">
+      <input
+        id="query-input"
+        type="text"
+        placeholder="Search your conversation history…"
+        autocomplete="off"
+      />
+    </form>
+    <p id="empty-hint" class="hint">Type a query and press Enter.</p>
+    <div id="results" role="region" aria-label="Search results"></div>
+    <p id="footnote" class="footnote" hidden></p>
     <script type="module" src="popup.js"></script>
   </body>
 </html>

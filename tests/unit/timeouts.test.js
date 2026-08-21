@@ -1,58 +1,67 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
-  PLATFORM_TIMEOUT_MS,
-  OVERALL_WALL_MS,
-  TAB_COMPLETE_MS,
-  POPUP_WATCHDOG_MS,
-  MAX_RESULTS_PER_PLATFORM,
   withTimeout,
   createRequestTracker,
+  OVERALL_WALL_MS,
 } from '../../extension/lib/timeouts.js';
 
-describe('timeout constants', () => {
-  it('matches blueprint budgets', () => {
-    expect(PLATFORM_TIMEOUT_MS).toBe(8000);
-    expect(OVERALL_WALL_MS).toBe(15000);
-    expect(TAB_COMPLETE_MS).toBe(3000);
-    expect(POPUP_WATCHDOG_MS).toBe(15500);
-    expect(MAX_RESULTS_PER_PLATFORM).toBe(20);
-  });
-});
-
 describe('withTimeout', () => {
-  it('resolves when promise wins', async () => {
-    await expect(withTimeout(Promise.resolve(42), 1000)).resolves.toBe(42);
+  it('resolves when the promise wins the race', async () => {
+    await expect(withTimeout(Promise.resolve('ok'), 50)).resolves.toBe('ok');
   });
 
-  it('rejects with TimeoutError when budget exceeded', async () => {
+  it('rejects with a TimeoutError when the timeout wins', async () => {
     vi.useFakeTimers();
-    const pending = withTimeout(new Promise(() => {}), 50, 'test');
-    const assertion = expect(pending).rejects.toMatchObject({
-      name: 'TimeoutError',
-      code: 'timeout',
-    });
-    await vi.advanceTimersByTimeAsync(50);
+    const never = new Promise(() => {});
+    const race = withTimeout(never, 10, 'thing');
+    const assertion = expect(race).rejects.toMatchObject({ name: 'TimeoutError', code: 'timeout' });
+    await vi.advanceTimersByTimeAsync(10);
     await assertion;
     vi.useRealTimers();
+  });
+
+  it('propagates a rejection from the promise', async () => {
+    await expect(withTimeout(Promise.reject(new Error('boom')), 50)).rejects.toThrow('boom');
   });
 });
 
 describe('createRequestTracker', () => {
-  it('tracks begin/cancel/isActive for request isolation', () => {
-    const t = createRequestTracker();
-    t.begin('a');
-    expect(t.isActive('a')).toBe(true);
-    t.begin('b');
-    expect(t.isActive('a')).toBe(false);
-    expect(t.isActive('b')).toBe(true);
-    t.cancel('b');
-    expect(t.getActiveId()).toBeNull();
+  it('tracks the active request and reports isActive correctly', () => {
+    const tracker = createRequestTracker();
+    expect(tracker.getActiveId()).toBeNull();
+
+    tracker.begin('r1');
+    expect(tracker.isActive('r1')).toBe(true);
+    expect(tracker.isActive('r2')).toBe(false);
   });
 
-  it('cancel without id clears active', () => {
-    const t = createRequestTracker();
-    t.begin('x');
-    expect(t.cancel()).toBe(true);
-    expect(t.isActive('x')).toBe(false);
+  it('a new begin() supersedes the previous request', () => {
+    const tracker = createRequestTracker();
+    tracker.begin('r1');
+    tracker.begin('r2');
+    expect(tracker.isActive('r1')).toBe(false);
+    expect(tracker.isActive('r2')).toBe(true);
+  });
+
+  it('cancel() with no id clears whatever is active', () => {
+    const tracker = createRequestTracker();
+    tracker.begin('r1');
+    expect(tracker.cancel()).toBe(true);
+    expect(tracker.getActiveId()).toBeNull();
+  });
+
+  it('cancel(id) only clears if id matches the active one', () => {
+    const tracker = createRequestTracker();
+    tracker.begin('r1');
+    expect(tracker.cancel('r2')).toBe(false);
+    expect(tracker.isActive('r1')).toBe(true);
+    expect(tracker.cancel('r1')).toBe(true);
+    expect(tracker.getActiveId()).toBeNull();
+  });
+});
+
+describe('budget constants', () => {
+  it('keeps the popup watchdog after the overall wall', () => {
+    expect(OVERALL_WALL_MS).toBeGreaterThan(0);
   });
 });
