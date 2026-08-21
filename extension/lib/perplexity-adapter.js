@@ -171,6 +171,24 @@ function sendMessageToTab(tabId, message) {
 }
 
 /**
+ * Send to a tab, and if nothing is listening — most commonly a perplexity.ai
+ * tab that was already open before this extension (re)loaded, since Chrome
+ * does not retroactively inject content scripts into already-open tabs —
+ * inject content/perplexity.js and retry once.
+ * @param {number} tabId
+ * @param {unknown} message
+ * @returns {Promise<any>}
+ */
+async function sendMessageWithInjectRetry(tabId, message) {
+  try {
+    return await sendMessageToTab(tabId, message);
+  } catch {
+    await chrome.scripting.executeScript({ target: { tabId }, files: ['content/perplexity.js'] });
+    return sendMessageToTab(tabId, message);
+  }
+}
+
+/**
  * Run a Perplexity search. Returns a result descriptor the service worker
  * turns into a SEARCH_RESULT_CHUNK — never throws.
  * @param {string} query
@@ -194,7 +212,7 @@ export async function searchPerplexity(query) {
 
   try {
     const response = await Promise.race([
-      sendMessageToTab(tabInfo.tabId, { type: PERPLEXITY_TAB_SEARCH, query }),
+      sendMessageWithInjectRetry(tabInfo.tabId, { type: PERPLEXITY_TAB_SEARCH, query }),
       timeout,
     ]);
 
