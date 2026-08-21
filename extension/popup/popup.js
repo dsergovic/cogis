@@ -21,10 +21,16 @@ let watchdogTimer = null;
 /** @type {Record<string, { status: string, results: import('../lib/messaging.js').PointerRecord[], message?: string, loginUrl?: string }>} */
 let groups = {};
 
-function resetGroups() {
+/** Platforms the user has collapsed. Session-only UI state — not reset between searches. */
+const collapsedPlatforms = new Set();
+
+/**
+ * @param {'idle'|'loading'} status
+ */
+function resetGroups(status) {
   groups = {};
   for (const platformId of PLATFORM_ORDER) {
-    groups[platformId] = { status: 'loading', results: [] };
+    groups[platformId] = { status, results: [] };
   }
 }
 
@@ -47,6 +53,7 @@ function render() {
   for (const platformId of PLATFORM_ORDER) {
     const platform = getPlatform(platformId);
     const group = groups[platformId] ?? { status: 'idle', results: [] };
+    const isCollapsed = collapsedPlatforms.has(platformId);
 
     const section = document.createElement('div');
     section.className = 'group';
@@ -61,18 +68,45 @@ function render() {
       capSpan.textContent = platform.capability === 'full-text' ? 'full-text' : 'title-match';
       heading.appendChild(capSpan);
     }
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+    toggleBtn.className = 'collapse-toggle';
+    toggleBtn.textContent = isCollapsed ? '▸' : '▾';
+    toggleBtn.setAttribute(
+      'aria-label',
+      `${isCollapsed ? 'Expand' : 'Collapse'} ${platform?.label ?? platformId}`,
+    );
+    toggleBtn.addEventListener('click', () => {
+      if (collapsedPlatforms.has(platformId)) {
+        collapsedPlatforms.delete(platformId);
+      } else {
+        collapsedPlatforms.add(platformId);
+      }
+      render();
+    });
+    heading.appendChild(toggleBtn);
     section.appendChild(heading);
 
-    if (group.status === 'loading') {
+    const content = document.createElement('div');
+    content.className = 'group-content';
+    content.hidden = isCollapsed;
+
+    if (group.status === 'idle') {
+      const note = document.createElement('p');
+      note.className = 'status-note';
+      note.textContent = 'Ready…';
+      content.appendChild(note);
+    } else if (group.status === 'loading') {
       const note = document.createElement('p');
       note.className = 'status-note';
       note.textContent = 'Searching…';
-      section.appendChild(note);
+      content.appendChild(note);
     } else if (group.status === 'login_required') {
       const note = document.createElement('p');
       note.className = 'status-note';
       note.textContent = group.message || `Please log in to ${platform?.label ?? platformId}`;
-      section.appendChild(note);
+      content.appendChild(note);
     } else if (group.status === 'unavailable' || group.status === 'timeout') {
       const note = document.createElement('p');
       note.className = 'status-note';
@@ -81,12 +115,12 @@ function render() {
         (group.status === 'timeout'
           ? `${platform?.label ?? platformId} timed out.`
           : `${platform?.label ?? platformId} is temporarily unavailable.`);
-      section.appendChild(note);
+      content.appendChild(note);
     } else if (group.status === 'empty') {
       const note = document.createElement('p');
       note.className = 'status-note';
       note.textContent = 'No results.';
-      section.appendChild(note);
+      content.appendChild(note);
     } else if (group.status === 'ready') {
       const list = document.createElement('ul');
       for (const hit of group.results) {
@@ -101,9 +135,10 @@ function render() {
         li.appendChild(a);
         list.appendChild(li);
       }
-      section.appendChild(list);
+      content.appendChild(list);
     }
 
+    section.appendChild(content);
     resultsEl.appendChild(section);
   }
 }
@@ -119,7 +154,7 @@ function startSearch(query) {
   const requestId = crypto.randomUUID();
   activeRequestId = requestId;
   activeQuery = query;
-  resetGroups();
+  resetGroups('loading');
   render();
 
   chrome.runtime.sendMessage(createSearchRequest({ requestId, query })).catch(() => {});
@@ -166,14 +201,15 @@ chrome.runtime.onMessage.addListener((message) => {
 
 // The popup is now its own small centered window (background/service-worker.js
 // opens it via chrome.windows.create), not the toolbar's anchored dropdown, so
-// it doesn't get the dropdown's built-in focus/dismiss behavior for free.
+// it doesn't get the dropdown's built-in focus behavior for free. It also
+// intentionally does NOT close on blur — opening a result via right-click ->
+// "Open in new tab" (or just alt-tabbing away) shouldn't lose your results;
+// Escape is the explicit way to dismiss it.
 input.focus();
 
 window.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') window.close();
 });
 
-window.addEventListener('blur', () => window.close());
-
-resetGroups();
+resetGroups('idle');
 render();
