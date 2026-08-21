@@ -35,22 +35,31 @@
  * exact query text baked into Perplexity's current frontend bundle and can
  * change on any Perplexity deploy. If this adapter starts failing outright,
  * re-capture the hash from a live session before assuming anything else is
- * wrong.
+ * wrong. **Keep `PERSISTED_QUERY_HASH` here in sync with the copy in
+ * `extension/content/perplexity.js`** — see below for why there are two.
  *
- * Cookie-authenticated only (no bearer token). Runs from the background
- * service worker directly via `host_permissions` — no content script or tab
- * needed.
+ * Cookie-authenticated, but unlike ChatGPT/Claude this endpoint is **not**
+ * reachable from the background service worker: a request identical in
+ * every way except its origin (`chrome-extension://...` instead of a real
+ * `https://www.perplexity.ai` page) gets a 403 from Perplexity's edge, while
+ * the same request run from an actual perplexity.ai page context returns
+ * 200. Confirmed live by re-running the exact captured request from both
+ * places. So this adapter finds-or-opens a perplexity.ai tab and has
+ * `extension/content/perplexity.js` — running in that page's own context —
+ * do the fetch, relaying the raw response back here for normalization.
  *
  * Auth mapping: 401 -> login_required. Other non-ok -> unavailable. Network
- * error/abort -> timeout. Generic S5-style mapping, no Perplexity-specific
- * rule.
+ * error/abort/no-tab-response -> timeout/unavailable. Generic S5-style
+ * mapping, no Perplexity-specific rule.
  */
 
 import { anyDateToIso, stripForbiddenFields, pointerHasForbiddenFields } from './results.js';
-import { PLATFORM_TIMEOUT_MS, MAX_RESULTS_PER_PLATFORM } from './timeouts.js';
+import { PLATFORM_TIMEOUT_MS, TAB_COMPLETE_MS, MAX_RESULTS_PER_PLATFORM } from './timeouts.js';
 
 const ORIGIN = 'https://www.perplexity.ai';
-const PERSISTED_QUERY_HASH = 'b70669aa090081047346576e89fe68bbc5269c3c2c0de084b980820fee9426a0';
+
+/** Message type the background sends into a perplexity.ai tab; content/perplexity.js listens for it. */
+export const PERPLEXITY_TAB_SEARCH = 'COGIS_PERPLEXITY_TAB_SEARCH';
 
 /**
  * @param {string} threadSlug
@@ -101,49 +110,105 @@ export function normalizePerplexityHit(raw) {
 }
 
 /**
+ * Find an existing perplexity.ai tab, or open one in the background. Returns
+ * the tab id and whether we created it (so the caller knows whether to close
+ * it afterward — an adopted user tab is never closed).
+ * @returns {Promise<{ tabId: number, created: boolean }>}
+ */
+async function ensurePerplexityTab() {
+  const existing = await chrome.tabs.query({
+    url: ['https://www.perplexity.ai/*', 'https://perplexity.ai/*'],
+  });
+  if (existing.length && typeof existing[0].id === 'number') {
+    return { tabId: existing[0].id, created: false };
+  }
+
+  const tab = await chrome.tabs.create({ url: `${ORIGIN}/`, active: false });
+  await waitForTabComplete(tab.id, TAB_COMPLETE_MS);
+  return { tabId: tab.id, created: true };
+}
+
+/**
+ * @param {number} tabId
+ * @param {number} timeoutMs
+ */
+function waitForTabComplete(tabId, timeoutMs) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      chrome.tabs.onUpdated.removeListener(listener);
+      clearTimeout(timer);
+      resolve();
+    };
+    const listener = (updatedTabId, info) => {
+      if (updatedTabId === tabId && info.status === 'complete') finish();
+    };
+    chrome.tabs.onUpdated.addListener(listener);
+    const timer = setTimeout(finish, timeoutMs);
+    chrome.tabs.get(tabId).then((t) => {
+      if (t.status === 'complete') finish();
+    }, finish);
+  });
+}
+
+/**
+ * @param {number} tabId
+ * @param {unknown} message
+ * @returns {Promise<any>}
+ */
+function sendMessageToTab(tabId, message) {
+  return new Promise((resolve, reject) => {
+    chrome.tabs.sendMessage(tabId, message, (response) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+      resolve(response);
+    });
+  });
+}
+
+/**
  * Run a Perplexity search. Returns a result descriptor the service worker
  * turns into a SEARCH_RESULT_CHUNK — never throws.
  * @param {string} query
  * @returns {Promise<{ status: import('./messaging.js').GroupStatus, results?: import('./messaging.js').PointerRecord[], message?: string, loginUrl?: string }>}
  */
 export async function searchPerplexity(query) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), PLATFORM_TIMEOUT_MS);
+  let tabInfo;
+  try {
+    tabInfo = await ensurePerplexityTab();
+  } catch {
+    return { status: 'unavailable', message: 'Could not open a Perplexity tab.' };
+  }
+
+  const timeout = new Promise((_, reject) => {
+    setTimeout(() => {
+      const err = new Error('Perplexity tab search timed out');
+      err.code = 'timeout';
+      reject(err);
+    }, PLATFORM_TIMEOUT_MS);
+  });
 
   try {
-    let res;
-    try {
-      res = await fetch(`${ORIGIN}/rest/perplexity_ask/graphql`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          operationName: 'CommandPaletteTypeaheadSearchRelayQuery',
-          variables: { query },
-          extensions: { persistedQuery: { version: 1, sha256Hash: PERSISTED_QUERY_HASH } },
-        }),
-        signal: controller.signal,
-      });
-    } catch (err) {
-      if (err?.name === 'AbortError') return { status: 'timeout' };
-      return { status: 'unavailable', message: 'Could not reach Perplexity.' };
-    }
+    const response = await Promise.race([
+      sendMessageToTab(tabInfo.tabId, { type: PERPLEXITY_TAB_SEARCH, query }),
+      timeout,
+    ]);
 
-    if (res.status === 401) {
+    if (!response) {
+      return { status: 'unavailable', message: 'Perplexity tab did not respond.' };
+    }
+    if (response.status === 401) {
       return { status: 'login_required', loginUrl: `${ORIGIN}/` };
     }
-    if (!res.ok) {
-      return { status: 'unavailable', message: `Perplexity search failed (${res.status}).` };
+    if (!response.ok) {
+      return { status: 'unavailable', message: `Perplexity search failed (${response.status}).` };
     }
 
-    let payload;
-    try {
-      payload = await res.json();
-    } catch {
-      return { status: 'unavailable', message: 'Perplexity returned an unexpected response.' };
-    }
-
-    const edges = payload?.data?.viewer?.typeaheadSearch?.edges;
+    const edges = response.json?.data?.viewer?.typeaheadSearch?.edges;
     if (!Array.isArray(edges)) {
       return { status: 'unavailable', message: 'Perplexity returned an unexpected response.' };
     }
@@ -161,7 +226,12 @@ export async function searchPerplexity(query) {
     }
 
     return { status: pointers.length ? 'ready' : 'empty', results: pointers };
+  } catch (err) {
+    if (err?.code === 'timeout') return { status: 'timeout' };
+    return { status: 'unavailable', message: 'Could not reach the Perplexity tab.' };
   } finally {
-    clearTimeout(timer);
+    if (tabInfo.created) {
+      chrome.tabs.remove(tabInfo.tabId).catch(() => {});
+    }
   }
 }
