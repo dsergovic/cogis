@@ -168,6 +168,7 @@ function startSearch(query) {
   activeRequestId = requestId;
   activeQuery = query;
   collapsedPlatforms.clear();
+  document.body.classList.add('has-searched');
   resetGroups('loading');
   render();
 

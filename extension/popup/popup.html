@@ -6,18 +6,20 @@
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
-    <header>
-      <h1>Cogis</h1>
-    </header>
-    <form id="search-form">
-      <input
-        id="query-input"
-        type="text"
-        placeholder="Search your conversation history…"
-        autocomplete="off"
-      />
-    </form>
-    <p id="empty-hint" class="hint">Type a query and press Enter.</p>
+    <div class="search-stage">
+      <header>
+        <h1>Cogis</h1>
+      </header>
+      <form id="search-form">
+        <input
+          id="query-input"
+          type="text"
+          placeholder="Search your conversation history…"
+          autocomplete="off"
+        />
+      </form>
+      <p id="empty-hint" class="hint">Type a query and press Enter.</p>
+    </div>
     <div id="results" role="region" aria-label="Search results"></div>
     <p id="footnote" class="footnote" hidden></p>
     <script type="module" src="popup.js"></script>
