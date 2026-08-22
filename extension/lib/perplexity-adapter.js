@@ -44,7 +44,8 @@
  * `https://www.perplexity.ai` page) gets a 403 from Perplexity's edge, while
  * the same request run from an actual perplexity.ai page context returns
  * 200. Confirmed live by re-running the exact captured request from both
- * places. So this adapter finds-or-opens a perplexity.ai tab and has
+ * places. So this adapter finds an existing perplexity.ai tab, or opens one
+ * in a new off-screen background window when none exists, and has
  * `extension/content/perplexity.js` — running in that page's own context —
  * do the fetch, relaying the raw response back here for normalization.
  *
@@ -55,7 +56,12 @@
 
 import { anyDateToIso, stripForbiddenFields, pointerHasForbiddenFields } from './results.js';
 import { PLATFORM_TIMEOUT_MS, TAB_COMPLETE_MS, MAX_RESULTS_PER_PLATFORM } from './timeouts.js';
-import { waitForTabComplete, sendMessageWithInjectRetry } from './tab-messaging.js';
+import {
+  waitForTabComplete,
+  sendMessageWithInjectRetry,
+  createHiddenTab,
+  closeHiddenWindow,
+} from './tab-messaging.js';
 
 const ORIGIN = 'https://www.perplexity.ai';
 
@@ -111,22 +117,23 @@ export function normalizePerplexityHit(raw) {
 }
 
 /**
- * Find an existing perplexity.ai tab, or open one in the background. Returns
- * the tab id and whether we created it (so the caller knows whether to close
- * it afterward — an adopted user tab is never closed).
- * @returns {Promise<{ tabId: number, created: boolean }>}
+ * Find an existing perplexity.ai tab, or open one in a new, off-screen
+ * background window so it never appears in the user's tab strip. Returns the
+ * tab id and, if we created it, the window id to close afterward — an
+ * adopted user tab (and its window) is never touched.
+ * @returns {Promise<{ tabId: number, created: boolean, windowId: number|null }>}
  */
 async function ensurePerplexityTab() {
   const existing = await chrome.tabs.query({
     url: ['https://www.perplexity.ai/*', 'https://perplexity.ai/*'],
   });
   if (existing.length && typeof existing[0].id === 'number') {
-    return { tabId: existing[0].id, created: false };
+    return { tabId: existing[0].id, created: false, windowId: null };
   }
 
-  const tab = await chrome.tabs.create({ url: `${ORIGIN}/`, active: false });
-  await waitForTabComplete(tab.id, TAB_COMPLETE_MS);
-  return { tabId: tab.id, created: true };
+  const hidden = await createHiddenTab(`${ORIGIN}/`);
+  await waitForTabComplete(hidden.tabId, TAB_COMPLETE_MS);
+  return { tabId: hidden.tabId, created: true, windowId: hidden.windowId };
 }
 
 /**
@@ -194,7 +201,7 @@ export async function searchPerplexity(query) {
     return { status: 'unavailable', message: 'Could not reach the Perplexity tab.' };
   } finally {
     if (tabInfo.created) {
-      chrome.tabs.remove(tabInfo.tabId).catch(() => {});
+      closeHiddenWindow(tabInfo.windowId);
     }
   }
 }

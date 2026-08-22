@@ -42,8 +42,9 @@
  *
  * Because this always has to navigate a tab to /search and simulate typing
  * — visibly, if done in a tab the user is looking at — this adapter always
- * opens its own background tab rather than adopting one of the user's open
- * Gemini tabs, and always closes it afterward.
+ * opens its own tab inside a new, off-screen background window (so it never
+ * appears in the user's tab strip) rather than adopting one of the user's
+ * open Gemini tabs, and always closes that window afterward.
  *
  * Auth mapping: content script reports `login_required` when the search
  * input never appears and a sign-in affordance is present; otherwise a
@@ -52,7 +53,12 @@
 
 import { stripForbiddenFields, pointerHasForbiddenFields } from './results.js';
 import { PLATFORM_TIMEOUT_MS, TAB_COMPLETE_MS, MAX_RESULTS_PER_PLATFORM } from './timeouts.js';
-import { waitForTabComplete, sendMessageWithInjectRetry } from './tab-messaging.js';
+import {
+  waitForTabComplete,
+  sendMessageWithInjectRetry,
+  createHiddenTab,
+  closeHiddenWindow,
+} from './tab-messaging.js';
 
 const ORIGIN = 'https://gemini.google.com';
 
@@ -155,9 +161,11 @@ export function normalizeGeminiHit(raw) {
  */
 export async function searchGemini(query) {
   let tabId;
+  let windowId;
   try {
-    const tab = await chrome.tabs.create({ url: `${ORIGIN}/search`, active: false });
-    tabId = tab.id;
+    const hidden = await createHiddenTab(`${ORIGIN}/search`);
+    tabId = hidden.tabId;
+    windowId = hidden.windowId;
     await waitForTabComplete(tabId, TAB_COMPLETE_MS);
   } catch {
     return { status: 'unavailable', message: 'Could not open a Gemini tab.' };
@@ -205,6 +213,6 @@ export async function searchGemini(query) {
     if (err?.code === 'timeout') return { status: 'timeout' };
     return { status: 'unavailable', message: 'Could not reach the Gemini tab.' };
   } finally {
-    chrome.tabs.remove(tabId).catch(() => {});
+    closeHiddenWindow(windowId);
   }
 }

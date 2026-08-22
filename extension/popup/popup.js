@@ -1,5 +1,5 @@
 import { MSG, createSearchRequest, shouldApplyChunk, normalizeQuery } from '../lib/messaging.js';
-import { PLATFORM_ORDER, getPlatform, FOOTNOTE_TEXT } from '../lib/platforms.js';
+import { PLATFORM_ORDER, getPlatform, FOOTNOTE_TEXT, loginRequiredCopy } from '../lib/platforms.js';
 import { resolveResultHref, truncateTitle } from '../lib/results.js';
 import { POPUP_WATCHDOG_MS } from '../lib/timeouts.js';
 import { perplexityPrefillUrl } from '../lib/perplexity-adapter.js';
@@ -71,7 +71,20 @@ function render() {
     const nameSpan = document.createElement('span');
     nameSpan.className = 'name';
     nameSpan.textContent = platform?.label ?? platformId;
+    nameSpan.tabIndex = 0;
+    nameSpan.setAttribute('role', 'button');
+    nameSpan.setAttribute('aria-expanded', String(!isCollapsed));
+    nameSpan.setAttribute(
+      'aria-label',
+      `${isCollapsed ? 'Expand' : 'Collapse'} ${platform?.label ?? platformId}`,
+    );
     nameSpan.addEventListener('click', toggleCollapse);
+    nameSpan.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        toggleCollapse();
+      }
+    });
     heading.appendChild(nameSpan);
     if (platform) {
       const capSpan = document.createElement('span');
@@ -79,17 +92,6 @@ function render() {
       capSpan.textContent = platform.capability === 'full-text' ? 'full-text' : 'title-match';
       heading.appendChild(capSpan);
     }
-
-    const toggleBtn = document.createElement('button');
-    toggleBtn.type = 'button';
-    toggleBtn.className = 'collapse-toggle';
-    toggleBtn.textContent = isCollapsed ? '▸' : '▾';
-    toggleBtn.setAttribute(
-      'aria-label',
-      `${isCollapsed ? 'Expand' : 'Collapse'} ${platform?.label ?? platformId}`,
-    );
-    toggleBtn.addEventListener('click', toggleCollapse);
-    heading.appendChild(toggleBtn);
     section.appendChild(heading);
 
     const content = document.createElement('div');
@@ -109,7 +111,19 @@ function render() {
     } else if (group.status === 'login_required') {
       const note = document.createElement('p');
       note.className = 'status-note';
-      note.textContent = group.message || `Please log in to ${platform?.label ?? platformId}`;
+      const loginUrl = group.loginUrl || platform?.loginUrl;
+      if (loginUrl) {
+        const link = document.createElement('a');
+        link.href = loginUrl;
+        link.textContent = `Log in to ${platform?.label ?? platformId}`;
+        link.addEventListener('click', (event) => {
+          event.preventDefault();
+          window.open(loginUrl, '_blank', 'noopener,noreferrer,width=1024,height=768');
+        });
+        note.appendChild(link);
+      } else {
+        note.textContent = group.message || loginRequiredCopy(platformId);
+      }
       content.appendChild(note);
     } else if (group.status === 'unavailable' || group.status === 'timeout') {
       const note = document.createElement('p');

@@ -49,6 +49,41 @@ export function sendMessageToTab(tabId, message) {
 }
 
 /**
+ * Open `url` in a new background window positioned off-screen, so it never
+ * appears in the user's tab strip or steals focus while a search runs in it.
+ * Positioned off-screen from creation (rather than created normally and then
+ * minimized) so there's no on-screen flash or focus flicker — a minimized
+ * window is briefly shown at normal position before Chrome collapses it.
+ * @param {string} url
+ * @returns {Promise<{ tabId: number, windowId: number }>}
+ */
+export async function createHiddenTab(url) {
+  const win = await chrome.windows.create({
+    url,
+    type: 'popup',
+    focused: false,
+    left: -32000,
+    top: -32000,
+    width: 400,
+    height: 300,
+  });
+  const tabId = win.tabs?.[0]?.id;
+  if (typeof tabId !== 'number' || typeof win.id !== 'number') {
+    throw new Error('Could not open a hidden tab.');
+  }
+  return { tabId, windowId: win.id };
+}
+
+/**
+ * @param {number|null|undefined} windowId
+ * @returns {Promise<void>}
+ */
+export function closeHiddenWindow(windowId) {
+  if (typeof windowId !== 'number') return Promise.resolve();
+  return chrome.windows.remove(windowId).catch(() => {});
+}
+
+/**
  * Send to a tab, and if nothing is listening — most commonly a tab that was
  * already open before this extension (re)loaded, since Chrome does not
  * retroactively inject content scripts into already-open tabs — inject the
