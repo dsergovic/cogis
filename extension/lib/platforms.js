@@ -10,7 +10,11 @@
  * @property {string[]} hostPatterns
  */
 
-/** @type {Record<string, PlatformDef>} */
+/**
+ * Registered lab adapters. Filled in one lab at a time, only after that
+ * lab's live contract has been verified — see the restart plan.
+ * @type {Record<string, PlatformDef>}
+ */
 export const PLATFORMS = {
   chatgpt: {
     id: 'chatgpt',
@@ -18,49 +22,67 @@ export const PLATFORMS = {
     capability: 'full-text',
     origin: 'https://chatgpt.com',
     loginUrl: 'https://chatgpt.com/',
-    hostPatterns: ['https://chatgpt.com/*', 'https://chat.openai.com/*'],
-  },
-  perplexity: {
-    id: 'perplexity',
-    label: 'Perplexity',
-    capability: 'title-match',
-    origin: 'https://www.perplexity.ai',
-    loginUrl: 'https://www.perplexity.ai/',
-    hostPatterns: ['https://www.perplexity.ai/*', 'https://perplexity.ai/*'],
+    hostPatterns: ['https://chatgpt.com/*'],
   },
   claude: {
     id: 'claude',
     label: 'Claude',
-    capability: 'title-match',
+    capability: 'full-text',
     origin: 'https://claude.ai',
     loginUrl: 'https://claude.ai/login',
     hostPatterns: ['https://claude.ai/*'],
   },
+  perplexity: {
+    id: 'perplexity',
+    label: 'Perplexity',
+    capability: 'full-text',
+    origin: 'https://www.perplexity.ai',
+    loginUrl: 'https://www.perplexity.ai/',
+    hostPatterns: ['https://www.perplexity.ai/*', 'https://perplexity.ai/*'],
+  },
   gemini: {
     id: 'gemini',
     label: 'Gemini',
-    capability: 'title-match',
+    capability: 'full-text',
     origin: 'https://gemini.google.com',
     loginUrl: 'https://gemini.google.com/app',
     hostPatterns: ['https://gemini.google.com/*'],
   },
+  grok: {
+    id: 'grok',
+    label: 'Grok',
+    capability: 'full-text',
+    origin: 'https://grok.com',
+    loginUrl: 'https://grok.com/',
+    hostPatterns: ['https://grok.com/*'],
+  },
 };
 
-/** UI group order for implemented platforms (M4: ChatGPT → Perplexity → Claude → Gemini). */
-export const PLATFORM_ORDER = ['chatgpt', 'perplexity', 'claude', 'gemini'];
+/** UI group order for implemented platforms, filled in as adapters land. */
+export const PLATFORM_ORDER = ['chatgpt', 'claude', 'perplexity', 'gemini', 'grok'];
 
 export const FOOTNOTE_TEXT = 'Some AIs do not support full-text search.';
 
+/**
+ * @param {string} id
+ * @returns {PlatformDef|null}
+ */
 export function getPlatform(id) {
   return PLATFORMS[id] ?? null;
 }
 
+/**
+ * @param {string} platformId
+ */
 export function loginRequiredCopy(platformId) {
   const platform = getPlatform(platformId);
   const name = platform?.label ?? platformId;
   return `Please log in to ${name}`;
 }
 
+/**
+ * @param {string} platformId
+ */
 export function unavailableCopy(platformId) {
   const platform = getPlatform(platformId);
   const name = platform?.label ?? platformId;

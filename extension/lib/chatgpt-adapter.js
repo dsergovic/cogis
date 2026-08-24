@@ -1,300 +1,163 @@
-import { getPlatformSelectors } from './selectors/loader.js';
-import { isRecognizedSearchPayload, normalizeChatgptSearchResponse } from './results.js';
-import { loginRequiredCopy, unavailableCopy, PLATFORMS } from './platforms.js';
-import { MAX_RESULTS_PER_PLATFORM } from './timeouts.js';
+/**
+ * ChatGPT adapter.
+ *
+ * Live contract, verified 2026-08-21 against chatgpt.com with a logged-in
+ * session (via Claude-in-Chrome network inspection, not the old blueprint's
+ * stale `GET /backend-api/conversations/search` — that route is gone):
+ *
+ *   1. GET  /api/auth/session            -> { accessToken, ... } (cookie-authed)
+ *   2. POST /backend-api/global/search   -> { items: [...], cursor, partial_results, source_statuses }
+ *      Authorization: Bearer <accessToken>, body { query, cursor: null }
+ *
+ * `items[]` mixes several `source_type`s (conversation, library document,
+ * possibly others) in one unified search — we only want `source_type ===
+ * "conversation"`. Each conversation item looks like:
+ *   {
+ *     id: "conversation:<uuid>:title" | "conversation:<uuid>:message:<uuid>",
+ *     source_type: "conversation",
+ *     title: string,
+ *     update_time: <unix seconds, float>,
+ *     match_kind: "title" | "content" (unconfirmed exact enum, title/content-ish),
+ *     payload: { kind: "conversation", conversation_id: <uuid>, message_id, is_archived, is_starred }
+ *   }
+ * A single conversation can appear more than once (title match + one or more
+ * content matches) — dedupe by conversation_id (== deep link) downstream.
+ *
+ * Auth mapping: no accessToken from /api/auth/session, or 401 from search ->
+ * login_required. 403/429/5xx -> unavailable. Network error/abort -> timeout.
+ * This is intentionally the generic S5-style mapping, not something ChatGPT
+ * needed its own rule for. A raw network-level failure (not a bad status
+ * code) is retried once before being treated as unavailable/timeout.
+ *
+ * Runs from the background service worker directly — no content script or
+ * tab needed. `host_permissions` for chatgpt.com lets the extension send an
+ * authenticated cross-origin fetch (cookies included) without opening a tab.
+ */
+
+import { anyDateToIso, stripForbiddenFields, pointerHasForbiddenFields } from './results.js';
+import { PLATFORM_TIMEOUT_MS, MAX_RESULTS_PER_PLATFORM } from './timeouts.js';
+import { retryOnce } from './retry.js';
+
+const ORIGIN = 'https://chatgpt.com';
 
 /**
- * Extract Bearer access token from /api/auth/session JSON.
- * Token is returned for the in-flight request only — never persist.
- * @param {unknown} sessionJson
+ * @param {string} conversationId
  * @returns {string|null}
  */
-export function extractAccessToken(sessionJson) {
-  if (!sessionJson || typeof sessionJson !== 'object') return null;
-  const obj = /** @type {Record<string, unknown>} */ (sessionJson);
-  const token = obj.accessToken ?? obj.access_token;
-  return typeof token === 'string' && token.trim() ? token.trim() : null;
+export function chatgptDeepLink(conversationId) {
+  if (typeof conversationId !== 'string' || !conversationId.trim()) return null;
+  return `${ORIGIN}/c/${encodeURIComponent(conversationId.trim())}`;
 }
 
 /**
- * Classify session endpoint outcome per S5.
- * Only successful JSON with no usable token (or positive logged-out DOM) → login_required.
- *
- * @param {{
- *   status: number,
- *   ok: boolean,
- *   contentType?: string|null,
- *   sessionJson: unknown,
- *   parseOk: boolean,
- *   isLoginButtonVisible?: boolean,
- * }} input
- * @returns {'authenticated'|'login_required'|'unavailable'}
+ * @param {Record<string, unknown>} raw one `items[]` entry with source_type "conversation"
+ * @returns {import('./messaging.js').PointerRecord|null}
  */
-export function classifySessionOutcome(input) {
-  const { status, ok, contentType, sessionJson, parseOk, isLoginButtonVisible } = input;
+export function normalizeChatgptHit(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const safe = stripForbiddenFields(raw);
+  if (safe.source_type !== 'conversation') return null;
 
-  if (status >= 500 || status === 0) return 'unavailable';
-  if (status === 401 || status === 403) return 'login_required';
+  const payload =
+    safe.payload && typeof safe.payload === 'object' ? stripForbiddenFields(safe.payload) : {};
+  const conversationId =
+    typeof payload.conversation_id === 'string' ? payload.conversation_id : null;
+  const title = typeof safe.title === 'string' && safe.title.trim() ? safe.title.trim() : null;
+  if (!conversationId || !title) return null;
 
-  const looksHtml =
-    (typeof contentType === 'string' && contentType.toLowerCase().includes('text/html')) ||
-    !parseOk;
+  const pointer = {
+    platform: 'chatgpt',
+    title,
+    dateIso: anyDateToIso(safe.update_time),
+    deepLinkUrl: chatgptDeepLink(conversationId),
+    prefillSupported: false,
+  };
 
-  if (looksHtml) {
-    return isLoginButtonVisible ? 'login_required' : 'unavailable';
-  }
-
-  if (!ok) {
-    return isLoginButtonVisible ? 'login_required' : 'unavailable';
-  }
-
-  const token = extractAccessToken(sessionJson);
-  if (token) return 'authenticated';
-  return 'login_required';
+  if (pointerHasForbiddenFields(pointer)) return null;
+  return pointer;
 }
 
 /**
- * Map search HTTP status (S5 matrix helper — single-sourced).
- * @param {number} status
- * @param {boolean} hasToken
- * @returns {'login_required'|'unavailable'|null} null means caller continues probing
- */
-export function classifyAuthFailure(status, hasToken) {
-  if (!hasToken) return 'login_required';
-  if (status === 401 || status === 403) return 'login_required';
-  if (status >= 500) return 'unavailable';
-  if (status === 0) return 'unavailable';
-  return null;
-}
-
-/**
- * Build search URL candidates (S1 prefers `query`; vivim docs use `q`).
- * @param {string} origin
+ * Run a ChatGPT search. Returns a result descriptor the service worker turns
+ * into a SEARCH_RESULT_CHUNK — never throws.
  * @param {string} query
- * @param {string[]} [paramNames]
+ * @returns {Promise<{ status: import('./messaging.js').GroupStatus, results?: import('./messaging.js').PointerRecord[], message?: string, loginUrl?: string }>}
  */
-export function buildSearchUrls(origin, query, paramNames = ['query', 'q']) {
-  const pack = getPlatformSelectors('chatgpt');
-  const path = pack?.endpoints?.search ?? '/backend-api/conversations/search';
-  const names = pack?.searchQueryParams?.length ? pack.searchQueryParams : paramNames;
-  return names.map((name) => {
-    const url = new URL(path, origin);
-    url.searchParams.set(name, query);
-    url.searchParams.set('limit', String(MAX_RESULTS_PER_PLATFORM));
-    return url.toString();
-  });
-}
+export async function searchChatgpt(query) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PLATFORM_TIMEOUT_MS);
 
-/**
- * @param {any} err
- */
-function isAbortError(err) {
-  return !!err && (err.name === 'AbortError' || err.code === 'ABORT_ERR');
-}
-
-/**
- * Pure orchestration of ChatGPT search given injectable fetchers.
- * Never stores tokens or message bodies.
- *
- * @param {object} deps
- * @param {string} deps.query
- * @param {string} [deps.origin]
- * @param {(input: string, init?: RequestInit) => Promise<Response>} deps.fetchImpl
- * @param {() => boolean} [deps.isLoginButtonVisible]
- * @param {number} [deps.maxResults]
- * @param {AbortSignal} [deps.signal]
- */
-export async function searchChatgpt(deps) {
-  const origin = deps.origin ?? PLATFORMS.chatgpt.origin;
-  const fetchImpl = deps.fetchImpl;
-  const maxResults = deps.maxResults ?? MAX_RESULTS_PER_PLATFORM;
-  const signal = deps.signal;
-  const pack = getPlatformSelectors('chatgpt');
-  const sessionPath = pack?.endpoints?.session ?? '/api/auth/session';
-
-  if (signal?.aborted) {
-    const err = new Error('aborted');
-    err.name = 'AbortError';
-    throw err;
-  }
-
-  let sessionRes;
   try {
-    sessionRes = await fetchImpl(new URL(sessionPath, origin).toString(), {
-      credentials: 'include',
-      headers: { Accept: 'application/json' },
-      signal,
-    });
-  } catch (err) {
-    if (isAbortError(err)) throw err;
-    if (deps.isLoginButtonVisible?.()) {
-      return {
-        status: 'login_required',
-        results: [],
-        message: loginRequiredCopy('chatgpt'),
-        loginUrl: PLATFORMS.chatgpt.loginUrl,
-        errorCode: 'session_fetch_failed_login',
-      };
-    }
-    return {
-      status: 'unavailable',
-      results: [],
-      message: unavailableCopy('chatgpt'),
-      errorCode: 'session_fetch_failed',
-    };
-  }
-
-  const contentType = sessionRes.headers?.get?.('content-type') ?? null;
-  let sessionJson = null;
-  let parseOk = false;
-  try {
-    sessionJson = await sessionRes.json();
-    parseOk = sessionJson !== null && typeof sessionJson === 'object';
-  } catch {
-    sessionJson = null;
-    parseOk = false;
-  }
-
-  const sessionClass = classifySessionOutcome({
-    status: sessionRes.status,
-    ok: sessionRes.ok,
-    contentType,
-    sessionJson,
-    parseOk,
-    isLoginButtonVisible: deps.isLoginButtonVisible?.() ?? false,
-  });
-
-  if (sessionClass === 'login_required') {
-    return {
-      status: 'login_required',
-      results: [],
-      message: loginRequiredCopy('chatgpt'),
-      loginUrl: PLATFORMS.chatgpt.loginUrl,
-      errorCode: 'no_access_token',
-    };
-  }
-  if (sessionClass === 'unavailable') {
-    return {
-      status: 'unavailable',
-      results: [],
-      message: unavailableCopy('chatgpt'),
-      errorCode: 'session_unavailable',
-    };
-  }
-
-  const accessToken = extractAccessToken(sessionJson);
-  if (!accessToken) {
-    return {
-      status: 'login_required',
-      results: [],
-      message: loginRequiredCopy('chatgpt'),
-      loginUrl: PLATFORMS.chatgpt.loginUrl,
-      errorCode: 'no_access_token',
-    };
-  }
-
-  const urls = buildSearchUrls(origin, deps.query);
-  let lastError = null;
-  let sawRecognizedEmpty = false;
-
-  for (let i = 0; i < urls.length; i += 1) {
-    const url = urls[i];
-    const isLast = i === urls.length - 1;
-    let res;
+    let session;
     try {
-      res = await fetchImpl(url, {
-        credentials: 'include',
-        headers: {
-          Accept: 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        signal,
-      });
+      const sessionRes = await retryOnce(() =>
+        fetch(`${ORIGIN}/api/auth/session`, {
+          credentials: 'include',
+          signal: controller.signal,
+        }),
+      );
+      if (!sessionRes.ok) {
+        return { status: 'login_required', loginUrl: `${ORIGIN}/` };
+      }
+      session = await sessionRes.json();
     } catch (err) {
-      if (isAbortError(err)) throw err;
-      lastError = err;
-      continue;
+      if (err?.name === 'AbortError') return { status: 'timeout' };
+      return { status: 'unavailable', message: 'Could not reach ChatGPT.' };
     }
 
-    const authClass = classifyAuthFailure(res.status, true);
-    if (authClass === 'login_required') {
-      return {
-        status: 'login_required',
-        results: [],
-        message: loginRequiredCopy('chatgpt'),
-        loginUrl: PLATFORMS.chatgpt.loginUrl,
-        errorCode: `search_${res.status}`,
-      };
-    }
-    if (authClass === 'unavailable') {
-      return {
-        status: 'unavailable',
-        results: [],
-        message: unavailableCopy('chatgpt'),
-        errorCode: `search_${res.status}`,
-      };
+    const accessToken = typeof session?.accessToken === 'string' ? session.accessToken : null;
+    if (!accessToken) {
+      return { status: 'login_required', loginUrl: `${ORIGIN}/` };
     }
 
-    if (!res.ok) {
-      lastError = new Error(`search HTTP ${res.status}`);
-      continue;
+    let searchRes;
+    try {
+      searchRes = await retryOnce(() =>
+        fetch(`${ORIGIN}/backend-api/global/search`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ query, cursor: null }),
+          signal: controller.signal,
+        }),
+      );
+    } catch (err) {
+      if (err?.name === 'AbortError') return { status: 'timeout' };
+      return { status: 'unavailable', message: 'Could not reach ChatGPT.' };
+    }
+
+    if (searchRes.status === 401) {
+      return { status: 'login_required', loginUrl: `${ORIGIN}/` };
+    }
+    if (!searchRes.ok) {
+      return { status: 'unavailable', message: `ChatGPT search failed (${searchRes.status}).` };
     }
 
     let payload;
     try {
-      payload = await res.json();
+      payload = await searchRes.json();
     } catch {
-      if (!isLast) continue;
-      return {
-        status: 'unavailable',
-        results: [],
-        message: unavailableCopy('chatgpt'),
-        errorCode: 'search_non_json',
-      };
+      return { status: 'unavailable', message: 'ChatGPT returned an unexpected response.' };
     }
 
-    if (!isRecognizedSearchPayload(payload)) {
-      lastError = new Error('unrecognized search payload');
-      continue;
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+    const seen = new Set();
+    const pointers = [];
+    for (const item of items) {
+      const pointer = normalizeChatgptHit(item);
+      if (!pointer) continue;
+      const key = pointer.deepLinkUrl;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      pointers.push(pointer);
+      if (pointers.length >= MAX_RESULTS_PER_PLATFORM) break;
     }
 
-    const results = normalizeChatgptSearchResponse(payload, { max: maxResults });
-    if (results.length > 0) {
-      return {
-        status: 'ready',
-        results,
-        capability: 'full-text',
-        errorCode: undefined,
-      };
-    }
-
-    sawRecognizedEmpty = true;
-    // Empty/unrecognized-empty: try alternate query param before declaring empty.
-    if (!isLast) continue;
+    return { status: pointers.length ? 'ready' : 'empty', results: pointers };
+  } finally {
+    clearTimeout(timer);
   }
-
-  if (sawRecognizedEmpty) {
-    return {
-      status: 'empty',
-      results: [],
-      capability: 'full-text',
-      errorCode: undefined,
-    };
-  }
-
-  if (lastError) {
-    return {
-      status: 'unavailable',
-      results: [],
-      message: unavailableCopy('chatgpt'),
-      errorCode: 'search_failed',
-    };
-  }
-
-  return {
-    status: 'unavailable',
-    results: [],
-    message: unavailableCopy('chatgpt'),
-    errorCode: 'search_exhausted',
-  };
 }

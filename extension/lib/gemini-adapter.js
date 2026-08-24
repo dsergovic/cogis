@@ -1,637 +1,221 @@
-import { getPlatformSelectors } from './selectors/loader.js';
+/**
+ * Gemini adapter.
+ *
+ * Live contract, verified 2026-08-21 against gemini.google.com with a
+ * logged-in session (via Claude-in-Chrome). Two findings that override the
+ * old blueprint's assumptions:
+ *
+ * 1. There IS a "Search chats" feature now (`/search`) — the old blueprint's
+ *    "no stable first-party history search endpoint" is out of date. But it
+ *    runs on Google's `batchexecute` RPC framework
+ *    (`/_/BardChatUi/data/batchexecute?rpcids=...`), whose request body
+ *    carries a session-bound anti-CSRF-shaped token. Attempting to extract
+ *    and replay that token outside the page is exactly the fragile,
+ *    ToS-adjacent reverse-engineering this project avoids — the safety
+ *    tooling correctly refused to let it be pulled into view during
+ *    investigation. So this adapter stays DOM-driven, same strategy the
+ *    original pre-blueprint expected for Gemini specifically.
+ *
+ * 2. The search is semantic, not literal. A deliberately nonsense query
+ *    (no real-word overlap with any chat) still returned three "relevant"
+ *    results — Gemini's search ranks by similarity, not substring/keyword
+ *    match. That means it will almost never report a true `empty` for an
+ *    account with any chat history at all; treat that as an honest
+ *    characteristic of the platform, not a bug to route around.
+ *
+ * Mechanics: `extension/content/gemini.js` runs inside a
+ * gemini.google.com/search tab, sets the value of
+ * `input[aria-label="Search chats"]` via the native setter + a synthetic
+ * `input` event (confirmed live — Angular's binding responds to this same
+ * as real typing), waits for the results list to settle, and scrapes
+ * `a.snippet-container[href^="/app/"]` — scoped to the `search-results-list`
+ * DOM region, distinct from the sidebar's `gem-nav-list-item` recents links,
+ * which use the same `/app/{id}` href shape and would otherwise leak in.
+ * Only `.title` and `.date` text are read; `.text` (the body-snippet div,
+ * confirming this is real content search) is never touched.
+ *
+ * Dates are display strings only ("Jul 3", "May 2, 2025", "Today",
+ * "Yesterday") — no machine timestamp is exposed in the DOM — so
+ * `parseGeminiDisplayDate` reconstructs an ISO date at day granularity.
+ * A year-less date more than a day in the future is assumed to be last
+ * year, to handle results near a year boundary.
+ *
+ * Because this always has to navigate a tab to /search and simulate typing
+ * — visibly, if done in a tab the user is looking at — this adapter always
+ * opens its own tab inside a new, off-screen background window (so it never
+ * appears in the user's tab strip) rather than adopting one of the user's
+ * open Gemini tabs, and always closes that window afterward. Opening it is
+ * retried once on failure — occasionally transient under normal browser
+ * load, not usually a sign Gemini itself is unreachable.
+ *
+ * Auth mapping: content script reports `login_required` when the search
+ * input never appears and a sign-in affordance is present; otherwise a
+ * missing input after budget is `unavailable`.
+ */
+
+import { stripForbiddenFields, pointerHasForbiddenFields } from './results.js';
+import { PLATFORM_TIMEOUT_MS, TAB_COMPLETE_MS, MAX_RESULTS_PER_PLATFORM } from './timeouts.js';
 import {
-  dedupePointers,
-  filterPointersByTitle,
-  normalizeGeminiHit,
-  extractGeminiConversationId,
-} from './results.js';
-import { loginRequiredCopy, unavailableCopy } from './platforms.js';
-import { MAX_RESULTS_PER_PLATFORM, PLATFORM_TIMEOUT_MS } from './timeouts.js';
-import { waitForReady } from './readiness.js';
+  waitForTabComplete,
+  sendMessageWithInjectRetry,
+  createHiddenTab,
+  closeHiddenWindow,
+} from './tab-messaging.js';
+import { retryOnce } from './retry.js';
 
-const CAPABILITY = 'title-match';
+const ORIGIN = 'https://gemini.google.com';
 
-/**
- * Soft scroll rounds for the history rail (S6). Completing this many stable
- * rounds still authorizes `empty` by design — unread older history is a
- * platform limit, not failure truncation. See BL-024 precedent / README.
- */
-export const HISTORY_SCROLL_MAX_ROUNDS = 8;
-
-/** Minimum remaining budget (ms) before starting another scroll round. */
-export const MIN_SCROLL_BUDGET_MS = 350;
-
-/** Pause between scroll steps so virtualized lists can paint (ms). */
-export const SCROLL_SETTLE_MS = 180;
-
-/** Soft ceiling on distinct history items collected in one scan. */
-export const HISTORY_ITEM_SOFT_CAP = 120;
+/** Message type the background sends into a gemini.google.com tab; content/gemini.js listens for it. */
+export const GEMINI_TAB_SEARCH = 'COGIS_GEMINI_TAB_SEARCH';
 
 /**
- * @param {any} err
+ * @param {string} href e.g. "/app/8a0f1d0dad3e529f"
+ * @returns {string|null}
  */
-function isAbortError(err) {
-  return !!err && (err.name === 'AbortError' || err.code === 'ABORT_ERR');
+export function extractGeminiId(href) {
+  if (typeof href !== 'string') return null;
+  const match = href.match(/\/app\/([^/?#]+)/i);
+  return match?.[1] || null;
 }
 
 /**
- * @param {AbortSignal|undefined} signal
+ * @param {string} id
+ * @returns {string|null}
  */
-function throwIfAborted(signal) {
-  if (signal?.aborted) {
-    const err = new Error('aborted');
-    err.name = 'AbortError';
-    throw err;
+export function geminiDeepLink(id) {
+  if (typeof id !== 'string' || !id.trim()) return null;
+  return `${ORIGIN}/app/${encodeURIComponent(id.trim())}`;
+}
+
+/**
+ * Parse Gemini's display-only date strings ("Jul 3", "May 2, 2025", "Today",
+ * "Yesterday") into an ISO date at day granularity. Returns null rather than
+ * guessing when the format isn't recognized.
+ * @param {string} text
+ * @param {Date} [now]
+ * @returns {string|null}
+ */
+export function parseGeminiDisplayDate(text, now = new Date()) {
+  if (typeof text !== 'string') return null;
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+
+  const atMidnightUtc = (y, m, d) => new Date(Date.UTC(y, m, d)).toISOString();
+
+  if (/^today$/i.test(trimmed)) {
+    return atMidnightUtc(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   }
+  if (/^yesterday$/i.test(trimmed)) {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString();
+  }
+
+  const withYear = trimmed.match(/^([A-Za-z]{3,9})\s+(\d{1,2}),\s*(\d{4})$/);
+  if (withYear) {
+    const d = new Date(`${withYear[1]} ${withYear[2]}, ${withYear[3]} UTC`);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+
+  const noYear = trimmed.match(/^([A-Za-z]{3,9})\s+(\d{1,2})$/);
+  if (noYear) {
+    const year = now.getUTCFullYear();
+    const d = new Date(`${noYear[1]} ${noYear[2]}, ${year} UTC`);
+    if (Number.isNaN(d.getTime())) return null;
+    if (d.getTime() - now.getTime() > 24 * 60 * 60 * 1000) {
+      const prev = new Date(`${noYear[1]} ${noYear[2]}, ${year - 1} UTC`);
+      return Number.isNaN(prev.getTime()) ? null : prev.toISOString();
+    }
+    return d.toISOString();
+  }
+
+  return null;
 }
 
 /**
- * @param {number} ms
- * @param {AbortSignal|undefined} signal
+ * @param {{ title?: unknown, dateText?: unknown, href?: unknown }} raw one scraped result from content/gemini.js
+ * @returns {import('./messaging.js').PointerRecord|null}
  */
-function sleep(ms, signal) {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      const err = new Error('aborted');
-      err.name = 'AbortError';
+export function normalizeGeminiHit(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const safe = stripForbiddenFields(raw);
+
+  const id = extractGeminiId(typeof safe.href === 'string' ? safe.href : null);
+  const title = typeof safe.title === 'string' && safe.title.trim() ? safe.title.trim() : null;
+  if (!id || !title) return null;
+
+  const pointer = {
+    platform: 'gemini',
+    title,
+    dateIso: parseGeminiDisplayDate(typeof safe.dateText === 'string' ? safe.dateText : null),
+    deepLinkUrl: geminiDeepLink(id),
+    prefillSupported: false,
+  };
+
+  if (pointerHasForbiddenFields(pointer)) return null;
+  return pointer;
+}
+
+/**
+ * Run a Gemini search. Returns a result descriptor the service worker turns
+ * into a SEARCH_RESULT_CHUNK — never throws.
+ * @param {string} query
+ * @returns {Promise<{ status: import('./messaging.js').GroupStatus, results?: import('./messaging.js').PointerRecord[], message?: string, loginUrl?: string }>}
+ */
+export async function searchGemini(query) {
+  let tabId;
+  let windowId;
+  try {
+    const hidden = await retryOnce(() => createHiddenTab(`${ORIGIN}/search`));
+    tabId = hidden.tabId;
+    windowId = hidden.windowId;
+    await waitForTabComplete(tabId, TAB_COMPLETE_MS);
+  } catch {
+    return { status: 'unavailable', message: 'Could not open a Gemini tab.' };
+  }
+
+  const timeout = new Promise((_, reject) => {
+    setTimeout(() => {
+      const err = new Error('Gemini tab search timed out');
+      err.code = 'timeout';
       reject(err);
-      return;
-    }
-    const timer = setTimeout(resolve, ms);
-    const onAbort = () => {
-      clearTimeout(timer);
-      const err = new Error('aborted');
-      err.name = 'AbortError';
-      reject(err);
-    };
-    signal?.addEventListener('abort', onAbort, { once: true });
+    }, PLATFORM_TIMEOUT_MS);
   });
-}
-
-/**
- * Classify Gemini auth from DOM signals (S5).
- * S5 authorizes `login_required` only when Sign-in CTAs **and**
- * “Sign in to save activity” are both present without owner signals.
- * A lone sign-in or save-activity signal without the other is ambiguous →
- * `unavailable` (not login_required).
- *
- * Owner / authenticated signals (S5): history items, account chip, or a
- * proven history rail **without** the full sign-in upsell. Ordering matters:
- * items/chip authenticate immediately; the full login shell beats a bare
- * rail (empty-history text on a logged-out page must not become `empty`).
- * @param {{
- *   signInVisible: boolean,
- *   signInToSaveVisible: boolean,
- *   hasHistoryItems: boolean,
- *   hasAccountChip: boolean,
- *   hasHistoryRail?: boolean,
- * }} input
- * @returns {'authenticated'|'login_required'|'unavailable'}
- */
-export function classifyGeminiAuth(input) {
-  const {
-    signInVisible,
-    signInToSaveVisible,
-    hasHistoryItems,
-    hasAccountChip,
-    hasHistoryRail = false,
-  } = input;
-
-  // Strong owner signals: real history items or account chip.
-  if (hasHistoryItems || hasAccountChip) {
-    return 'authenticated';
-  }
-
-  // Full S5 login shell wins over a rail-only / empty-history heuristic.
-  if (signInVisible && signInToSaveVisible) {
-    return 'login_required';
-  }
-
-  // Proven rail without sign-in upsell (S5: history rail OR account chip).
-  if (hasHistoryRail) {
-    return 'authenticated';
-  }
-
-  return 'unavailable';
-}
-
-/**
- * True when a completed scan coverage is enough to trust an `empty` chip.
- * Incomplete / budget / missing-rail coverage must never authorize empty.
- * @param {string|undefined} coverage
- */
-export function geminiCoverageEstablished(coverage) {
-  return coverage === 'ok' || coverage === 'soft_ceiling';
-}
-
-/**
- * Parse raw history item records collected from the DOM into uncapped pointers.
- * Caller title-filters then caps (SC-6).
- * @param {Record<string, unknown>[]} items
- * @returns {import('./messaging.js').PointerRecord[]}
- */
-export function normalizeGeminiHistoryItems(items) {
-  if (!Array.isArray(items)) return [];
-  const pointers = [];
-  for (const item of items) {
-    const p = normalizeGeminiHit(item);
-    if (p) pointers.push(p);
-  }
-  return pointers;
-}
-
-/**
- * Default DOM collectors used when the content script does not inject helpers.
- * @param {Document} doc
- * @param {{
- *   signIn?: string,
- *   signInToSaveActivity?: string,
- *   accountChip?: string,
- *   historyItem?: string,
- *   historyScrollContainer?: string,
- *   emptyHistoryState?: string,
- * }} selectors
- */
-export function createGeminiDomHelpers(doc, selectors) {
-  const signInSel =
-    selectors.signIn ||
-    'a[href*="accounts.google.com"], button[aria-label*="Sign in" i], a[aria-label*="Sign in" i]';
-  const saveSel =
-    selectors.signInToSaveActivity ||
-    '[aria-label*="Sign in to save activity" i], button, a, p, span, div';
-  const accountSel =
-    selectors.accountChip ||
-    'img[alt*="Google Account" i], button[aria-label*="Google Account" i], a[aria-label*="Google Account" i]';
-  const itemSel = selectors.historyItem || 'a[href*="/app/"]';
-  const scrollSel = selectors.historyScrollContainer || '';
-  const emptyStateSel = selectors.emptyHistoryState || '';
-
-  function isVisible(el) {
-    if (!el) return false;
-    try {
-      const style = doc.defaultView?.getComputedStyle?.(el);
-      if (!style) return true;
-      return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
-    } catch {
-      return false;
-    }
-  }
-
-  function textIncludesSignInToSave() {
-    try {
-      const nodes = doc.querySelectorAll(saveSel);
-      for (const node of nodes) {
-        if (!isVisible(node)) continue;
-        const text = String(node.textContent || '').toLowerCase();
-        if (text.includes('sign in to save activity')) return true;
-      }
-    } catch {
-      // ignore
-    }
-    return false;
-  }
-
-  function anyVisible(sel) {
-    try {
-      const nodes = doc.querySelectorAll(sel);
-      for (const node of nodes) {
-        if (isVisible(node)) return true;
-      }
-    } catch {
-      // ignore
-    }
-    return false;
-  }
-
-  function hasEmptyHistoryState() {
-    if (emptyStateSel) {
-      try {
-        const nodes = doc.querySelectorAll(emptyStateSel);
-        for (const node of nodes) {
-          if (isVisible(node)) return true;
-        }
-      } catch {
-        // ignore
-      }
-    }
-    // Heuristic empty-state copy when the rail is present but has no chats.
-    try {
-      const nodes = doc.querySelectorAll('p, span, div, li, [role="status"]');
-      for (const node of nodes) {
-        if (!isVisible(node)) continue;
-        const text = String(node.textContent || '')
-          .replace(/\s+/g, ' ')
-          .trim()
-          .toLowerCase();
-        if (!text || text.length > 80) continue;
-        if (
-          text.includes('no recent') ||
-          text.includes('no chats') ||
-          text.includes('no conversations') ||
-          text === 'no activity'
-        ) {
-          return true;
-        }
-      }
-    } catch {
-      // ignore
-    }
-    return false;
-  }
-
-  function collectHistoryItems() {
-    /** @type {Record<string, unknown>[]} */
-    const out = [];
-    const seen = new Set();
-    try {
-      const nodes = doc.querySelectorAll(itemSel);
-      for (const node of nodes) {
-        let href = null;
-        try {
-          const Anchor = globalThis.HTMLAnchorElement;
-          if (typeof Anchor === 'function' && node instanceof Anchor) {
-            href = node.href || null;
-          }
-        } catch {
-          href = null;
-        }
-        if (!href) {
-          href = node.getAttribute?.('href') || (typeof node.href === 'string' ? node.href : null);
-        }
-        const id = extractGeminiConversationId(href);
-        if (!id || seen.has(id)) continue;
-        // Skip bare /app home link.
-        if (/\/app\/?$/i.test(String(href || '').split('?')[0])) continue;
-        const title = String(node.textContent || node.getAttribute?.('aria-label') || '')
-          .replace(/\s+/g, ' ')
-          .trim();
-        if (!title) continue;
-        seen.add(id);
-        out.push({ id, title, href });
-      }
-    } catch {
-      // ignore
-    }
-    return out;
-  }
-
-  return {
-    isSignInVisible: () => anyVisible(signInSel),
-    isSignInToSaveVisible: () => textIncludesSignInToSave(),
-    hasAccountChip: () => anyVisible(accountSel),
-    /**
-     * Positive proof that the history surface is present (items, configured
-     * scroll root, or empty-history copy). Account chip alone is not enough.
-     */
-    hasHistoryRail: () => {
-      if (collectHistoryItems().length > 0) return true;
-      if (hasEmptyHistoryState()) return true;
-      if (scrollSel) {
-        try {
-          const el = doc.querySelector(scrollSel);
-          if (el && isVisible(el)) return true;
-        } catch {
-          // ignore
-        }
-      }
-      return false;
-    },
-    collectHistoryItems,
-    getScrollRoot: () => {
-      if (scrollSel) {
-        try {
-          const el = doc.querySelector(scrollSel);
-          if (el) return el;
-        } catch {
-          // ignore
-        }
-      }
-      // Prefer a scrollable ancestor of the first history link; else documentElement.
-      try {
-        const first = doc.querySelector(itemSel);
-        let node = first?.parentElement ?? null;
-        while (node && node !== doc.body) {
-          const style = doc.defaultView?.getComputedStyle?.(node);
-          const overflowY = style?.overflowY || '';
-          if (
-            (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') &&
-            node.scrollHeight > node.clientHeight + 8
-          ) {
-            return node;
-          }
-          node = node.parentElement;
-        }
-      } catch {
-        // ignore
-      }
-      return doc.scrollingElement || doc.documentElement || doc.body;
-    },
-    scrollHistory: (root) => {
-      if (!root) return;
-      try {
-        if (typeof root.scrollBy === 'function') {
-          root.scrollBy(0, Math.max(240, Math.floor((root.clientHeight || 400) * 0.85)));
-        } else {
-          root.scrollTop = (root.scrollTop || 0) + 400;
-        }
-      } catch {
-        // ignore
-      }
-    },
-  };
-}
-
-/**
- * Scan Gemini history DOM with scroll-with-budget (S4/S6).
- * Returns raw items + coverage; caller applies title filter and empty honesty.
- *
- * @param {{
- *   helpers: ReturnType<typeof createGeminiDomHelpers>,
- *   signal?: AbortSignal,
- *   platformBudgetMs?: number,
- *   now?: () => number,
- *   sleepImpl?: (ms: number, signal?: AbortSignal) => Promise<void>,
- *   maxRounds?: number,
- *   itemSoftCap?: number,
- * }} opts
- */
-export async function scanGeminiHistory(opts) {
-  const {
-    helpers,
-    signal,
-    platformBudgetMs = PLATFORM_TIMEOUT_MS,
-    now = () => Date.now(),
-    sleepImpl = sleep,
-    maxRounds = HISTORY_SCROLL_MAX_ROUNDS,
-    itemSoftCap = HISTORY_ITEM_SOFT_CAP,
-  } = opts;
-
-  const started = now();
-  const remaining = () => platformBudgetMs - (now() - started);
-
-  throwIfAborted(signal);
-
-  /** @type {Map<string, Record<string, unknown>>} */
-  const byId = new Map();
-
-  const ingest = (items) => {
-    for (const item of items) {
-      const id =
-        (typeof item.id === 'string' && item.id) ||
-        extractGeminiConversationId(typeof item.href === 'string' ? item.href : null);
-      if (!id || byId.has(id)) continue;
-      byId.set(id, item);
-    }
-  };
-
-  ingest(helpers.collectHistoryItems());
-
-  const railProven = () =>
-    byId.size > 0 ||
-    (typeof helpers.hasHistoryRail === 'function' ? helpers.hasHistoryRail() : false);
-
-  let rounds = 0;
-  let stableRounds = 0;
-  /** @type {string} */
-  let coverage = 'rail_missing';
-  let errorCode = 'history_rail_missing';
-
-  const settleStableEnd = () => {
-    // Zero-item DOM scans are not self-proving (unlike HTTP 200 + []). Require
-    // a positive rail / empty-state signal before coverage can be `ok`.
-    if (byId.size === 0 && !railProven()) {
-      coverage = 'rail_missing';
-      errorCode = 'history_rail_missing';
-      return;
-    }
-    coverage = 'ok';
-    errorCode = undefined;
-  };
-
-  while (rounds < maxRounds) {
-    throwIfAborted(signal);
-    if (remaining() < MIN_SCROLL_BUDGET_MS) {
-      coverage = 'budget_exhausted';
-      errorCode = 'history_budget_exhausted';
-      break;
-    }
-    if (byId.size >= itemSoftCap) {
-      coverage = 'soft_ceiling';
-      errorCode = 'history_soft_ceiling';
-      break;
-    }
-
-    const before = byId.size;
-    const root = helpers.getScrollRoot();
-    helpers.scrollHistory(root);
-    await sleepImpl(SCROLL_SETTLE_MS, signal);
-    ingest(helpers.collectHistoryItems());
-    rounds += 1;
-
-    if (byId.size === before) {
-      stableRounds += 1;
-      // Two consecutive no-growth rounds ⇒ end of virtualized list (or empty rail).
-      if (stableRounds >= 2) {
-        settleStableEnd();
-        break;
-      }
-    } else {
-      stableRounds = 0;
-    }
-
-    if (rounds >= maxRounds) {
-      if (byId.size === 0 && !railProven()) {
-        coverage = 'rail_missing';
-        errorCode = 'history_rail_missing';
-      } else {
-        coverage = 'soft_ceiling';
-        errorCode = 'history_soft_ceiling';
-      }
-    }
-  }
-
-  // No scroll rounds ran (budget already spent) with zero items and no rail.
-  if (rounds === 0 && byId.size === 0 && coverage !== 'budget_exhausted' && !railProven()) {
-    coverage = 'rail_missing';
-    errorCode = 'history_rail_missing';
-  }
-
-  return {
-    items: [...byId.values()],
-    coverage,
-    errorCode,
-    rounds,
-  };
-}
-
-/**
- * Gemini DOM-first title-match search (S4).
- *
- * @param {{
- *   query: string,
- *   document?: Document,
- *   selectors?: Record<string, string>,
- *   helpers?: ReturnType<typeof createGeminiDomHelpers>,
- *   signal?: AbortSignal,
- *   platformBudgetMs?: number,
- *   waitForReadyImpl?: typeof waitForReady,
- *   now?: () => number,
- *   sleepImpl?: (ms: number, signal?: AbortSignal) => Promise<void>,
- *   maxResults?: number,
- * }} input
- */
-export async function searchGemini(input) {
-  const {
-    query,
-    document: doc,
-    selectors: selectorsOverride,
-    helpers: helpersOverride,
-    signal,
-    platformBudgetMs = PLATFORM_TIMEOUT_MS,
-    waitForReadyImpl = waitForReady,
-    now = () => Date.now(),
-    sleepImpl = sleep,
-    maxResults = MAX_RESULTS_PER_PLATFORM,
-  } = input;
-
-  const pack = getPlatformSelectors('gemini') || {};
-  const selectors = {
-    ...(pack.selectors || {}),
-    ...(selectorsOverride || {}),
-  };
-  const loginUrl = pack.loginUrl || 'https://gemini.google.com/app';
 
   try {
-    throwIfAborted(signal);
+    const response = await Promise.race([
+      sendMessageWithInjectRetry(tabId, { type: GEMINI_TAB_SEARCH, query }, 'content/gemini.js'),
+      timeout,
+    ]);
 
-    const helpers = helpersOverride || (doc ? createGeminiDomHelpers(doc, selectors) : null);
-    if (!helpers) {
-      return {
-        status: 'unavailable',
-        results: [],
-        capability: CAPABILITY,
-        message: unavailableCopy('gemini'),
-        errorCode: 'dom_unavailable',
-        loginUrl,
-      };
+    if (!response) {
+      return { status: 'unavailable', message: 'Gemini tab did not respond.' };
+    }
+    if (response.status === 'login_required') {
+      return { status: 'login_required', loginUrl: `${ORIGIN}/app` };
+    }
+    if (response.status === 'error') {
+      return { status: 'unavailable', message: response.message || 'Gemini search failed.' };
     }
 
-    // Wait for history rail / empty-state OR the full S5 login shell — not chip alone.
-    const root = doc?.documentElement || doc?.body;
-    if (root && waitForReadyImpl) {
-      await waitForReadyImpl({
-        root,
-        isReady: () =>
-          helpers.collectHistoryItems().length > 0 ||
-          (typeof helpers.hasHistoryRail === 'function' && helpers.hasHistoryRail()) ||
-          (helpers.isSignInVisible() && helpers.isSignInToSaveVisible()),
-        timeoutMs: Math.min(2500, Math.max(400, platformBudgetMs * 0.35)),
-        pollMs: 150,
-        signal,
-      });
+    const hits = Array.isArray(response.hits) ? response.hits : [];
+    const seen = new Set();
+    const pointers = [];
+    for (const hit of hits) {
+      const pointer = normalizeGeminiHit(hit);
+      if (!pointer) continue;
+      const key = pointer.deepLinkUrl;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      pointers.push(pointer);
+      if (pointers.length >= MAX_RESULTS_PER_PLATFORM) break;
     }
 
-    throwIfAborted(signal);
-
-    const historyProbe = helpers.collectHistoryItems();
-    const hasHistoryRail =
-      typeof helpers.hasHistoryRail === 'function' ? helpers.hasHistoryRail() : false;
-    const auth = classifyGeminiAuth({
-      signInVisible: helpers.isSignInVisible(),
-      signInToSaveVisible: helpers.isSignInToSaveVisible(),
-      hasHistoryItems: historyProbe.length > 0,
-      hasAccountChip: helpers.hasAccountChip(),
-      hasHistoryRail,
-    });
-
-    if (auth === 'login_required') {
-      return {
-        status: 'login_required',
-        results: [],
-        capability: CAPABILITY,
-        message: loginRequiredCopy('gemini'),
-        errorCode: 'login_shell',
-        loginUrl,
-      };
-    }
-
-    if (auth === 'unavailable') {
-      return {
-        status: 'unavailable',
-        results: [],
-        capability: CAPABILITY,
-        message: unavailableCopy('gemini'),
-        errorCode: 'auth_ambiguous',
-        loginUrl,
-      };
-    }
-
-    const spentBeforeScan = now();
-    // Approximate remaining budget for scroll scan (caller already spent tab prep).
-    const scanBudget = Math.max(400, platformBudgetMs - 0);
-    const scan = await scanGeminiHistory({
-      helpers,
-      signal,
-      platformBudgetMs: scanBudget,
-      now,
-      sleepImpl,
-    });
-
-    // Normalize full collected window uncapped → title filter → cap (SC-6).
-    const uncapped = normalizeGeminiHistoryItems(scan.items);
-    const matched = filterPointersByTitle(uncapped, query);
-    const results = dedupePointers(matched, maxResults);
-
-    if (results.length > 0) {
-      // Partial hits are success even when coverage was truncated (SC-2).
-      return {
-        status: 'ready',
-        results,
-        capability: CAPABILITY,
-        errorCode: geminiCoverageEstablished(scan.coverage) ? undefined : scan.errorCode,
-        loginUrl,
-      };
-    }
-
-    if (!geminiCoverageEstablished(scan.coverage)) {
-      const isBudget = scan.coverage === 'budget_exhausted';
-      console.debug('[cogis:gemini] incomplete history coverage', {
-        coverage: scan.coverage,
-        errorCode: scan.errorCode,
-        itemCount: scan.items.length,
-        rounds: scan.rounds,
-        spentMs: now() - spentBeforeScan,
-      });
-      return {
-        status: isBudget ? 'timeout' : 'unavailable',
-        results: [],
-        capability: CAPABILITY,
-        message: unavailableCopy('gemini'),
-        errorCode: scan.errorCode ?? 'history_coverage_unproven',
-        loginUrl,
-      };
-    }
-
-    return {
-      status: 'empty',
-      results: [],
-      capability: CAPABILITY,
-      errorCode: scan.coverage === 'soft_ceiling' ? 'history_soft_ceiling' : undefined,
-      loginUrl,
-    };
+    return { status: pointers.length ? 'ready' : 'empty', results: pointers };
   } catch (err) {
-    if (isAbortError(err)) {
-      const abortErr = /** @type {Error & { name: string }} */ (err);
-      throw abortErr;
-    }
-    console.debug('[cogis:gemini] search exception', err);
-    return {
-      status: 'unavailable',
-      results: [],
-      capability: CAPABILITY,
-      message: unavailableCopy('gemini'),
-      errorCode: 'adapter_exception',
-      loginUrl,
-    };
+    if (err?.code === 'timeout') return { status: 'timeout' };
+    return { status: 'unavailable', message: 'Could not reach the Gemini tab.' };
+  } finally {
+    closeHiddenWindow(windowId);
   }
 }

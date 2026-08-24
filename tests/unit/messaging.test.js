@@ -5,85 +5,82 @@ import {
   createSearchCancel,
   createResultChunk,
   createPlatformDone,
-  createDebugSetPingOptIn,
-  createDebugSendPing,
   shouldApplyChunk,
   normalizeQuery,
 } from '../../extension/lib/messaging.js';
 
-describe('normalizeQuery', () => {
-  it('accepts a non-whitespace query', () => {
-    expect(normalizeQuery('  soup  ')).toBe('soup');
+describe('createSearchRequest', () => {
+  it('builds a well-formed SEARCH_REQUEST', () => {
+    const msg = createSearchRequest({ requestId: 'r1', query: 'recipe' });
+    expect(msg).toEqual({
+      type: MSG.SEARCH_REQUEST,
+      requestId: 'r1',
+      query: 'recipe',
+      platforms: undefined,
+    });
   });
 
-  it('treats empty and whitespace as empty submit', () => {
-    expect(normalizeQuery('')).toBeNull();
-    expect(normalizeQuery('   ')).toBeNull();
-    expect(normalizeQuery('\n\t')).toBeNull();
+  it('throws without a requestId', () => {
+    expect(() => createSearchRequest({ query: 'x' })).toThrow();
+  });
+
+  it('throws without a query string', () => {
+    expect(() => createSearchRequest({ requestId: 'r1' })).toThrow();
   });
 });
 
-describe('message factories', () => {
-  it('builds SEARCH_REQUEST', () => {
-    const msg = createSearchRequest({ requestId: 'r1', query: 'pasta', platforms: ['chatgpt'] });
-    expect(msg.type).toBe(MSG.SEARCH_REQUEST);
-    expect(msg.requestId).toBe('r1');
-    expect(msg.query).toBe('pasta');
-    expect(msg.platforms).toEqual(['chatgpt']);
-  });
-
-  it('builds SEARCH_CANCEL', () => {
+describe('createSearchCancel', () => {
+  it('builds a well-formed SEARCH_CANCEL', () => {
     expect(createSearchCancel({ requestId: 'r1' })).toEqual({
       type: MSG.SEARCH_CANCEL,
       requestId: 'r1',
     });
   });
 
-  it('builds result chunk and platform done', () => {
-    const chunk = createResultChunk({
-      requestId: 'r1',
-      platform: 'chatgpt',
-      status: 'ready',
-      capability: 'full-text',
-      results: [],
-    });
-    expect(chunk.type).toBe(MSG.SEARCH_RESULT_CHUNK);
-    expect(createPlatformDone({ requestId: 'r1', platform: 'chatgpt', status: 'ready' }).type).toBe(
-      MSG.SEARCH_PLATFORM_DONE,
-    );
+  it('throws without a requestId', () => {
+    expect(() => createSearchCancel({})).toThrow();
   });
 });
 
-describe('debug message factories (M6)', () => {
-  it('builds DEBUG_SET_PING_OPT_IN coerced to boolean', () => {
-    expect(createDebugSetPingOptIn({ pingOptIn: true })).toEqual({
-      type: MSG.DEBUG_SET_PING_OPT_IN,
-      pingOptIn: true,
-    });
-    expect(createDebugSetPingOptIn({ pingOptIn: 1 })).toEqual({
-      type: MSG.DEBUG_SET_PING_OPT_IN,
-      pingOptIn: false,
-    });
+describe('createResultChunk', () => {
+  it('builds a well-formed chunk', () => {
+    const msg = createResultChunk({ requestId: 'r1', platform: 'chatgpt', status: 'ready' });
+    expect(msg.type).toBe(MSG.SEARCH_RESULT_CHUNK);
+    expect(msg.requestId).toBe('r1');
+    expect(msg.platform).toBe('chatgpt');
+    expect(msg.status).toBe('ready');
   });
 
-  it('builds DEBUG_SEND_PING', () => {
-    expect(createDebugSendPing({ platformId: 'chatgpt' })).toEqual({
-      type: MSG.DEBUG_SEND_PING,
-      platformId: 'chatgpt',
+  it('throws without required fields', () => {
+    expect(() => createResultChunk({ requestId: 'r1' })).toThrow();
+  });
+});
+
+describe('createPlatformDone', () => {
+  it('builds a well-formed done message', () => {
+    expect(createPlatformDone({ requestId: 'r1', platform: 'chatgpt', status: 'ready' })).toEqual({
+      type: MSG.SEARCH_PLATFORM_DONE,
+      requestId: 'r1',
+      platform: 'chatgpt',
+      status: 'ready',
     });
   });
 });
 
 describe('shouldApplyChunk', () => {
-  it('applies only matching active requestId', () => {
-    expect(shouldApplyChunk('a', { requestId: 'a' })).toBe(true);
-    expect(shouldApplyChunk('a', { requestId: 'b' })).toBe(false);
-    expect(shouldApplyChunk(null, { requestId: 'a' })).toBe(false);
+  it('is true only when requestId matches the active one', () => {
+    expect(shouldApplyChunk('r1', { requestId: 'r1' })).toBe(true);
+    expect(shouldApplyChunk('r1', { requestId: 'r2' })).toBe(false);
+    expect(shouldApplyChunk(null, { requestId: 'r1' })).toBe(false);
+    expect(shouldApplyChunk('r1', {})).toBe(false);
   });
+});
 
-  it('isolates in-flight cancel semantics (US-7)', () => {
-    const activeAfterCancel = 'req-b';
-    const lateChunkFromA = { requestId: 'req-a', type: MSG.SEARCH_RESULT_CHUNK };
-    expect(shouldApplyChunk(activeAfterCancel, lateChunkFromA)).toBe(false);
+describe('normalizeQuery', () => {
+  it('trims and rejects empty/whitespace-only input', () => {
+    expect(normalizeQuery('  hello  ')).toBe('hello');
+    expect(normalizeQuery('   ')).toBeNull();
+    expect(normalizeQuery('')).toBeNull();
+    expect(normalizeQuery(42)).toBeNull();
   });
 });

@@ -2,14 +2,12 @@
 
 ## Privacy posture
 
-- Queries are processed locally and only sent into lab surfaces the user already uses (ChatGPT, Perplexity, Claude, Gemini).
-- Cogis does not operate a search backend that receives query text.
-- Session cookies and access tokens are never copied into extension storage or transmitted to Cogis infrastructure. Tokens retrieved from the lab session endpoint are held in memory for the in-flight request only.
-- Cogis does not scrape, index, store, or redistribute conversation message bodies.
-- Nothing is cached between searches; each query re-hits the lab.
-- Optional selector-manifest fetch from `cogis.ai` (M5) carries no query text — only a data-only JSON pack of selectors / URL patterns.
-- Optional maintainer anonymous ping (M6) is **off by default** and opt-in. When enabled, the payload may include only platform id, selector pack version, error class / code, and optionally the extension version — **never** query text, titles, cookies, or message bodies. This build does not point at a production ping endpoint; enabling one is a human escalation.
-- The M6 debug panel shows per-platform latency, hit counts, last status, and selector pack version only. It does not display or store message bodies or query text. Tiny `chrome.storage.local` prefs hold the ping opt-in flag only.
+- Queries are processed locally and only sent into the lab surfaces the user already uses (ChatGPT, Claude, Gemini, Perplexity, Grok).
+- Cogis does not operate a search backend and does not receive query text — there is no Cogis-owned server in the loop at all.
+- Session cookies and any session-derived tokens are never copied into extension storage or transmitted anywhere but the lab origin that issued them. A token is held in memory for the in-flight request only.
+- Cogis does not scrape, index, store, or redistribute conversation message bodies — only title, date, and a link back to the conversation.
+- Nothing is cached between searches; each query re-hits every lab live.
+- Cogis does not fetch anything from a Cogis-owned server, log usage, or phone home. There is no telemetry, no analytics, and no remote configuration fetch.
 
 ## ToS posture
 
@@ -24,4 +22,4 @@ The extension operates under the user's own credentials, in the user's own brows
 
 ## Distribution
 
-V1 is **dev-unpacked** only: load the `extension/` directory via `chrome://extensions` (Developer mode → Load unpacked). Chrome Web Store listing is a human decision and is not performed by automated agents.
+V1 is **dev-unpacked** only: load the `extension/` directory via `chrome://extensions` (Developer mode → Load unpacked). Chrome Web Store listing is a human decision, made later if at all.

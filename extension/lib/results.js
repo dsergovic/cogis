@@ -1,6 +1,11 @@
-import { MAX_RESULTS_PER_PLATFORM } from './timeouts.js';
+/**
+ * Generic pointer-record helpers shared by every lab adapter. Platform-specific
+ * parsing (field aliases, deep-link formats) lives in each lab's own
+ * `lib/<lab>-adapter.js`, not here — this file only knows the common shape
+ * and the privacy backstop.
+ */
 
-/** Fields that must never appear on Cogis pointer records. */
+/** Fields that must never appear on a Cogis pointer record. */
 export const FORBIDDEN_BODY_KEYS = Object.freeze([
   'mapping',
   'message',
@@ -18,19 +23,37 @@ export const FORBIDDEN_BODY_KEYS = Object.freeze([
 ]);
 
 /**
- * Convert Unix seconds (number or numeric string) to ISO-8601, or null.
+ * Convert Unix seconds or milliseconds (number or numeric string) to
+ * ISO-8601, or null.
  * @param {unknown} value
  * @returns {string|null}
  */
-export function unixSecondsToIso(value) {
+export function unixTimeToIso(value) {
   if (value === null || value === undefined || value === '') return null;
   const n = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(n) || n <= 0) return null;
-  // Heuristic: ms vs seconds
   const ms = n > 1e12 ? n : n * 1000;
   const d = new Date(ms);
   if (Number.isNaN(d.getTime())) return null;
   return d.toISOString();
+}
+
+/**
+ * Parse an ISO-string-or-unix value into ISO-8601, or null.
+ * @param {unknown} value
+ * @returns {string|null}
+ */
+export function anyDateToIso(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'number' || (typeof value === 'string' && /^\d+(\.\d+)?$/.test(value))) {
+    return unixTimeToIso(value);
+  }
+  if (typeof value === 'string') {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toISOString();
+  }
+  return null;
 }
 
 /**
@@ -57,245 +80,26 @@ export function pointerHasForbiddenFields(pointer) {
   return FORBIDDEN_BODY_KEYS.some((k) => Object.prototype.hasOwnProperty.call(pointer, k));
 }
 
+/** Default cutoff for `truncateTitle` — long enough to identify a chat, short enough to scan a list. */
+export const TITLE_DISPLAY_MAX = 150;
+
 /**
- * Build ChatGPT deep link from conversation id.
- * @param {string} id
- * @returns {string|null}
+ * Truncate a title for display only. Some labs use the first message as the
+ * title for an otherwise-untitled chat, which can run to paragraph length —
+ * this keeps the result list scannable. The pointer's own `title` field is
+ * left untouched; only call this at render time.
+ * @param {string} title
+ * @param {number} [maxLength]
+ * @returns {string}
  */
-export function chatgptDeepLink(id) {
-  if (typeof id !== 'string') return null;
-  const trimmed = id.trim();
-  if (!trimmed) return null;
-  return `https://chatgpt.com/c/${encodeURIComponent(trimmed)}`;
+export function truncateTitle(title, maxLength = TITLE_DISPLAY_MAX) {
+  if (typeof title !== 'string') return '';
+  if (title.length <= maxLength) return title;
+  return `${title.slice(0, maxLength).trimEnd()}…`;
 }
 
 /**
- * Normalize a single ChatGPT search hit into a Cogis pointer record.
- * Accepts common field aliases from reverse-eng / live shapes.
- * @param {Record<string, unknown>} raw
- * @returns {import('./messaging.js').PointerRecord|null}
- */
-export function normalizeChatgptHit(raw) {
-  if (!raw || typeof raw !== 'object') return null;
-
-  const safe = stripForbiddenFields(raw);
-  const id =
-    (typeof safe.id === 'string' && safe.id) ||
-    (typeof safe.conversation_id === 'string' && safe.conversation_id) ||
-    (typeof safe.conversationId === 'string' && safe.conversationId) ||
-    null;
-
-  const titleRaw = safe.title ?? safe.name ?? safe.conversation_title;
-  const title = typeof titleRaw === 'string' && titleRaw.trim() ? titleRaw.trim() : null;
-  if (!id || !title) return null;
-
-  const dateIso =
-    unixSecondsToIso(safe.update_time) ??
-    unixSecondsToIso(safe.updateTime) ??
-    unixSecondsToIso(safe.create_time) ??
-    unixSecondsToIso(safe.createTime);
-
-  const pointer = {
-    platform: 'chatgpt',
-    title,
-    dateIso,
-    deepLinkUrl: chatgptDeepLink(id),
-    prefillSupported: false,
-  };
-
-  if (pointerHasForbiddenFields(pointer)) {
-    return null;
-  }
-  return pointer;
-}
-
-/**
- * True when payload looks like a ChatGPT search response we know how to read.
- * @param {unknown} payload
- */
-export function isRecognizedSearchPayload(payload) {
-  if (Array.isArray(payload)) return true;
-  if (!payload || typeof payload !== 'object') return false;
-  const obj = /** @type {Record<string, unknown>} */ (payload);
-  return (
-    Array.isArray(obj.items) ||
-    Array.isArray(obj.data) ||
-    Array.isArray(obj.conversations) ||
-    Array.isArray(obj.results)
-  );
-}
-
-/**
- * Extract item array from ChatGPT search JSON (shape may drift).
- * @param {unknown} payload
- * @returns {Record<string, unknown>[]}
- */
-export function extractChatgptSearchItems(payload) {
-  if (!isRecognizedSearchPayload(payload)) return [];
-  if (Array.isArray(payload)) return payload.filter((x) => x && typeof x === 'object');
-  const obj = /** @type {Record<string, unknown>} */ (payload);
-
-  if (Array.isArray(obj.items)) return obj.items.filter((x) => x && typeof x === 'object');
-  if (Array.isArray(obj.data)) return obj.data.filter((x) => x && typeof x === 'object');
-  if (Array.isArray(obj.conversations))
-    return obj.conversations.filter((x) => x && typeof x === 'object');
-  if (Array.isArray(obj.results)) return obj.results.filter((x) => x && typeof x === 'object');
-  return [];
-}
-
-/**
- * Normalize a full ChatGPT search response into capped pointers.
- * @param {unknown} payload
- * @param {{ max?: number }} [opts]
- * @returns {import('./messaging.js').PointerRecord[]}
- */
-export function normalizeChatgptSearchResponse(payload, opts = {}) {
-  const max = opts.max ?? MAX_RESULTS_PER_PLATFORM;
-  const items = extractChatgptSearchItems(payload);
-  const pointers = [];
-  for (const item of items) {
-    const p = normalizeChatgptHit(item);
-    if (p) pointers.push(p);
-    if (pointers.length >= max) break;
-  }
-  return pointers;
-}
-
-/**
- * Build Perplexity deep link from thread slug.
- * @param {string} slug
- * @returns {string|null}
- */
-export function perplexityDeepLink(slug) {
-  if (typeof slug !== 'string') return null;
-  const trimmed = slug.trim().replace(/^\/+/, '');
-  if (!trimmed) return null;
-  return `https://www.perplexity.ai/search/${encodeURIComponent(trimmed)}`;
-}
-
-/**
- * Build Perplexity URL prefill.
- * @param {string} query
- * @returns {string|null}
- */
-export function perplexityPrefillUrl(query) {
-  if (typeof query !== 'string') return null;
-  const trimmed = query.trim();
-  if (!trimmed) return null;
-  const url = new URL('https://www.perplexity.ai/search');
-  url.searchParams.set('q', trimmed);
-  return url.toString();
-}
-
-/**
- * Parse Perplexity last_query_datetime (ISO string or unix) to ISO-8601.
- * @param {unknown} value
- * @returns {string|null}
- */
-export function perplexityDateToIso(value) {
-  if (value === null || value === undefined || value === '') return null;
-  if (typeof value === 'number' || (typeof value === 'string' && /^\d+(\.\d+)?$/.test(value))) {
-    return unixSecondsToIso(value);
-  }
-  if (typeof value === 'string') {
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return null;
-    return d.toISOString();
-  }
-  return null;
-}
-
-/**
- * True when payload looks like a Perplexity list_ask_threads response.
- * @param {unknown} payload
- */
-export function isRecognizedPerplexityListPayload(payload) {
-  if (Array.isArray(payload)) return true;
-  if (!payload || typeof payload !== 'object') return false;
-  const obj = /** @type {Record<string, unknown>} */ (payload);
-  return (
-    Array.isArray(obj.threads) ||
-    Array.isArray(obj.items) ||
-    Array.isArray(obj.data) ||
-    Array.isArray(obj.results)
-  );
-}
-
-/**
- * Extract item array from Perplexity list_ask_threads JSON.
- * @param {unknown} payload
- * @returns {Record<string, unknown>[]}
- */
-export function extractPerplexityListItems(payload) {
-  if (!isRecognizedPerplexityListPayload(payload)) return [];
-  if (Array.isArray(payload)) return payload.filter((x) => x && typeof x === 'object');
-  const obj = /** @type {Record<string, unknown>} */ (payload);
-  if (Array.isArray(obj.threads)) return obj.threads.filter((x) => x && typeof x === 'object');
-  if (Array.isArray(obj.items)) return obj.items.filter((x) => x && typeof x === 'object');
-  if (Array.isArray(obj.data)) return obj.data.filter((x) => x && typeof x === 'object');
-  if (Array.isArray(obj.results)) return obj.results.filter((x) => x && typeof x === 'object');
-  return [];
-}
-
-/**
- * Normalize a single Perplexity thread list item into a Cogis pointer.
- * @param {Record<string, unknown>} raw
- * @returns {import('./messaging.js').PointerRecord|null}
- */
-export function normalizePerplexityHit(raw) {
-  if (!raw || typeof raw !== 'object') return null;
-
-  const safe = stripForbiddenFields(raw);
-  const slug =
-    (typeof safe.slug === 'string' && safe.slug) ||
-    (typeof safe.url_slug === 'string' && safe.url_slug) ||
-    (typeof safe.thread_slug === 'string' && safe.thread_slug) ||
-    null;
-
-  const titleRaw = safe.title ?? safe.name ?? safe.query_str;
-  const title = typeof titleRaw === 'string' && titleRaw.trim() ? titleRaw.trim() : null;
-  if (!slug || !title) return null;
-
-  const dateIso =
-    perplexityDateToIso(safe.last_query_datetime) ??
-    perplexityDateToIso(safe.lastQueryDatetime) ??
-    perplexityDateToIso(safe.updated) ??
-    perplexityDateToIso(safe.updated_at);
-
-  const pointer = {
-    platform: 'perplexity',
-    title,
-    dateIso,
-    deepLinkUrl: perplexityDeepLink(slug),
-    prefillSupported: true,
-  };
-
-  if (pointerHasForbiddenFields(pointer)) {
-    return null;
-  }
-  return pointer;
-}
-
-/**
- * Normalize a Perplexity list_ask_threads response into capped pointers.
- * @param {unknown} payload
- * @param {{ max?: number }} [opts]
- * @returns {import('./messaging.js').PointerRecord[]}
- */
-export function normalizePerplexityListResponse(payload, opts = {}) {
-  const max = opts.max ?? MAX_RESULTS_PER_PLATFORM;
-  const items = extractPerplexityListItems(payload);
-  const pointers = [];
-  for (const item of items) {
-    const p = normalizePerplexityHit(item);
-    if (p) pointers.push(p);
-    if (pointers.length >= max) break;
-  }
-  return pointers;
-}
-
-/**
- * Client-side title substring filter (title-match platforms).
+ * Client-side title substring filter, for title-match platforms.
  * @param {import('./messaging.js').PointerRecord[]} pointers
  * @param {string} query
  */
@@ -308,218 +112,11 @@ export function filterPointersByTitle(pointers, query) {
 }
 
 /**
- * Build Claude deep link from conversation uuid.
- * @param {string} uuid
- * @returns {string|null}
- */
-export function claudeDeepLink(uuid) {
-  if (typeof uuid !== 'string') return null;
-  const trimmed = uuid.trim();
-  if (!trimmed) return null;
-  return `https://claude.ai/chat/${encodeURIComponent(trimmed)}`;
-}
-
-/**
- * Parse Claude created_at / updated_at (ISO string or unix) to ISO-8601.
- * @param {unknown} value
- * @returns {string|null}
- */
-export function claudeDateToIso(value) {
-  if (value === null || value === undefined || value === '') return null;
-  if (typeof value === 'number' || (typeof value === 'string' && /^\d+(\.\d+)?$/.test(value))) {
-    return unixSecondsToIso(value);
-  }
-  if (typeof value === 'string') {
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return null;
-    return d.toISOString();
-  }
-  return null;
-}
-
-/**
- * True when payload looks like a Claude conversations / projects list.
- * @param {unknown} payload
- */
-export function isRecognizedClaudeListPayload(payload) {
-  if (Array.isArray(payload)) return true;
-  if (!payload || typeof payload !== 'object') return false;
-  const obj = /** @type {Record<string, unknown>} */ (payload);
-  return (
-    Array.isArray(obj.chat_conversations) ||
-    Array.isArray(obj.conversations) ||
-    Array.isArray(obj.items) ||
-    Array.isArray(obj.data) ||
-    Array.isArray(obj.results)
-  );
-}
-
-/**
- * Extract conversation items from Claude list JSON.
- * @param {unknown} payload
- * @returns {Record<string, unknown>[]}
- */
-export function extractClaudeConversationItems(payload) {
-  if (!isRecognizedClaudeListPayload(payload)) return [];
-  if (Array.isArray(payload)) return payload.filter((x) => x && typeof x === 'object');
-  const obj = /** @type {Record<string, unknown>} */ (payload);
-  if (Array.isArray(obj.chat_conversations)) {
-    return obj.chat_conversations.filter((x) => x && typeof x === 'object');
-  }
-  if (Array.isArray(obj.conversations)) {
-    return obj.conversations.filter((x) => x && typeof x === 'object');
-  }
-  if (Array.isArray(obj.items)) return obj.items.filter((x) => x && typeof x === 'object');
-  if (Array.isArray(obj.data)) return obj.data.filter((x) => x && typeof x === 'object');
-  if (Array.isArray(obj.results)) return obj.results.filter((x) => x && typeof x === 'object');
-  return [];
-}
-
-/**
- * Normalize a single Claude conversation list item into a Cogis pointer.
- * @param {Record<string, unknown>} raw
- * @returns {import('./messaging.js').PointerRecord|null}
- */
-export function normalizeClaudeHit(raw) {
-  if (!raw || typeof raw !== 'object') return null;
-
-  const safe = stripForbiddenFields(raw);
-  const uuid =
-    (typeof safe.uuid === 'string' && safe.uuid) ||
-    (typeof safe.id === 'string' && safe.id) ||
-    (typeof safe.conversation_uuid === 'string' && safe.conversation_uuid) ||
-    (typeof safe.chat_conversation_uuid === 'string' && safe.chat_conversation_uuid) ||
-    null;
-
-  const titleRaw = safe.name ?? safe.title ?? safe.conversation_name;
-  const title = typeof titleRaw === 'string' && titleRaw.trim() ? titleRaw.trim() : null;
-  if (!uuid || !title) return null;
-
-  const dateIso =
-    claudeDateToIso(safe.updated_at) ??
-    claudeDateToIso(safe.updatedAt) ??
-    claudeDateToIso(safe.created_at) ??
-    claudeDateToIso(safe.createdAt);
-
-  const pointer = {
-    platform: 'claude',
-    title,
-    dateIso,
-    deepLinkUrl: claudeDeepLink(uuid),
-    prefillSupported: false,
-  };
-
-  if (pointerHasForbiddenFields(pointer)) {
-    return null;
-  }
-  return pointer;
-}
-
-/**
- * Normalize a Claude conversations list response into pointers.
- * When `max` is omitted, returns all valid pointers (caller title-filters then
- * caps — required for Claude client-side title-match). Pass `max` only when the
- * caller already has a server-filtered or intentionally truncated set.
- *
- * @param {unknown} payload
- * @param {{ max?: number }} [opts]
- * @returns {import('./messaging.js').PointerRecord[]}
- */
-export function normalizeClaudeListResponse(payload, opts = {}) {
-  const max = opts.max;
-  const items = extractClaudeConversationItems(payload);
-  const pointers = [];
-  for (const item of items) {
-    const p = normalizeClaudeHit(item);
-    if (p) pointers.push(p);
-    if (typeof max === 'number' && pointers.length >= max) break;
-  }
-  return pointers;
-}
-
-/**
- * Build Gemini deep link from conversation id.
- * @param {string} id
- * @returns {string|null}
- */
-export function geminiDeepLink(id) {
-  if (typeof id !== 'string') return null;
-  const trimmed = id.trim().replace(/^\/+/, '');
-  if (!trimmed) return null;
-  return `https://gemini.google.com/app/${encodeURIComponent(trimmed)}`;
-}
-
-/**
- * Extract Gemini conversation id from an href or path (`/app/{id}`).
- * @param {string|null|undefined} href
- * @returns {string|null}
- */
-export function extractGeminiConversationId(href) {
-  if (typeof href !== 'string' || !href.trim()) return null;
-  try {
-    const url = new URL(href, 'https://gemini.google.com');
-    const match = url.pathname.match(/\/app\/([^/?#]+)/i);
-    if (!match?.[1]) return null;
-    const id = decodeURIComponent(match[1]).trim();
-    if (!id || id.toLowerCase() === 'app') return null;
-    return id;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Normalize a Gemini history DOM item into a Cogis pointer.
- * @param {Record<string, unknown>} raw
- * @returns {import('./messaging.js').PointerRecord|null}
- */
-export function normalizeGeminiHit(raw) {
-  if (!raw || typeof raw !== 'object') return null;
-
-  const safe = stripForbiddenFields(raw);
-  const id =
-    (typeof safe.id === 'string' && safe.id) ||
-    (typeof safe.conversation_id === 'string' && safe.conversation_id) ||
-    (typeof safe.conversationId === 'string' && safe.conversationId) ||
-    extractGeminiConversationId(
-      typeof safe.href === 'string'
-        ? safe.href
-        : typeof safe.url === 'string'
-          ? safe.url
-          : typeof safe.deepLinkUrl === 'string'
-            ? safe.deepLinkUrl
-            : null,
-    );
-
-  const titleRaw = safe.title ?? safe.name ?? safe.label;
-  const title = typeof titleRaw === 'string' && titleRaw.trim() ? titleRaw.trim() : null;
-  if (!id || !title) return null;
-
-  const dateIso =
-    unixSecondsToIso(safe.update_time) ??
-    unixSecondsToIso(safe.updateTime) ??
-    (typeof safe.dateIso === 'string' && safe.dateIso.trim() ? safe.dateIso.trim() : null);
-
-  const pointer = {
-    platform: 'gemini',
-    title,
-    dateIso,
-    deepLinkUrl: geminiDeepLink(id),
-    prefillSupported: false,
-  };
-
-  if (pointerHasForbiddenFields(pointer)) {
-    return null;
-  }
-  return pointer;
-}
-
-/**
  * Deduplicate pointers by deepLinkUrl (or title fallback), preserving order.
  * @param {import('./messaging.js').PointerRecord[]} pointers
- * @param {number} [max]
+ * @param {number} max
  */
-export function dedupePointers(pointers, max = MAX_RESULTS_PER_PLATFORM) {
+export function dedupePointers(pointers, max) {
   const seen = new Set();
   const out = [];
   for (const p of pointers) {
@@ -528,27 +125,41 @@ export function dedupePointers(pointers, max = MAX_RESULTS_PER_PLATFORM) {
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(p);
-    if (out.length >= max) break;
+    if (typeof max === 'number' && out.length >= max) break;
   }
   return out;
 }
 
 /**
- * Click cascade href: deep link → prefill (?q=) → lab home.
- * @param {import('./messaging.js').PointerRecord|null|undefined} hit
- * @param {string} platformId
+ * Append a Text Fragment (`:~:text=`) so the browser scrolls to and
+ * highlights the user's own typed query on arrival, if it's found verbatim
+ * on the page. Only ever built from the user's own query — never from a
+ * lab's snippet/body text, which this project never retains. Purely
+ * additive: a page or browser that doesn't support it just ignores it and
+ * lands where it would have anyway.
+ * @param {string} url
  * @param {string|null|undefined} query
- * @param {string} [homeFallback]
+ * @returns {string}
  */
-export function resolveResultHref(hit, platformId, query, homeFallback = '#') {
-  if (hit?.deepLinkUrl) return hit.deepLinkUrl;
-  if (hit?.prefillSupported && platformId === 'perplexity') {
-    const prefill = perplexityPrefillUrl(query ?? '');
-    if (prefill) return prefill;
-  }
-  if (platformId === 'perplexity') return 'https://www.perplexity.ai';
-  if (platformId === 'chatgpt') return 'https://chatgpt.com';
-  if (platformId === 'claude') return 'https://claude.ai';
-  if (platformId === 'gemini') return 'https://gemini.google.com/app';
-  return homeFallback;
+export function withTextFragment(url, query) {
+  if (typeof url !== 'string' || !url) return url;
+  const q = typeof query === 'string' ? query.trim() : '';
+  if (!q) return url;
+  const encoded = encodeURIComponent(q).replace(/-/g, '%2D');
+  return url.includes('#') ? `${url}:~:text=${encoded}` : `${url}#:~:text=${encoded}`;
+}
+
+/**
+ * Click cascade href: deep link → prefill URL (if supported) → lab home.
+ * The Text Fragment highlight is only attached to an actual deep link — a
+ * prefill or home-page fallback isn't landing on specific content.
+ * @param {import('./messaging.js').PointerRecord|null|undefined} hit
+ * @param {string|null|undefined} prefillUrl
+ * @param {string} homeUrl
+ * @param {string|null|undefined} [query]
+ */
+export function resolveResultHref(hit, prefillUrl, homeUrl, query) {
+  if (hit?.deepLinkUrl) return withTextFragment(hit.deepLinkUrl, query);
+  if (hit?.prefillSupported && prefillUrl) return prefillUrl;
+  return homeUrl;
 }

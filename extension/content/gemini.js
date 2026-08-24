@@ -1,166 +1,97 @@
 /**
- * Classic (non-module) Gemini content script.
- * Keeps the static content_scripts entry classic (no top-level import), then
- * dynamically imports the shared ES adapter — single owner for DOM-first
- * history scan / title-match under extension/lib/.
+ * Runs the Gemini "Search chats" flow inside an actual gemini.google.com/search
+ * tab. There is no first-party search endpoint this extension can call
+ * directly (see the long comment in extension/lib/gemini-adapter.js for why
+ * — it's Google's `batchexecute` RPC with a session-bound token, and
+ * replaying that outside the page is exactly the kind of fragile
+ * reverse-engineering this project avoids). So this drives the real search
+ * UI: type into the search box the same way a user would, wait for results
+ * to settle, and scrape title/date/href only — the body-snippet text is
+ * never read.
  *
- * Those modules must be listed in manifest web_accessible_resources (MV3).
- *
- * Search is DOM-first per S4 (no stable first-party history search endpoint).
+ * Classic (non-module) content script — no imports. This file is both
+ * statically declared in manifest.json (auto-injected on page load) and a
+ * fallback-injection target from tab-messaging.js's inject-and-retry path,
+ * so it can legitimately run twice in the same tab's isolated world. The
+ * top-level guard makes a second run a safe no-op instead of a top-level
+ * `const` redeclaration SyntaxError.
  */
-(function () {
-  'use strict';
 
-  const MSG = {
-    GEMINI_SEARCH: 'GEMINI_SEARCH',
-    GEMINI_SEARCH_RESULT: 'GEMINI_SEARCH_RESULT',
-    GEMINI_SEARCH_CANCEL: 'GEMINI_SEARCH_CANCEL',
-    COGIS_PING: 'COGIS_PING',
+if (!window.__cogisGeminiSearchInstalled) {
+  window.__cogisGeminiSearchInstalled = true;
+
+  const GEMINI_TAB_SEARCH = 'COGIS_GEMINI_TAB_SEARCH';
+  const SEARCH_INPUT_SELECTOR = 'input[aria-label="Search chats"]';
+  const RESULT_LINK_SELECTOR = 'a.snippet-container[href^="/app/"]';
+
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const waitForSearchInput = async (budgetMs) => {
+    const start = Date.now();
+    while (Date.now() - start < budgetMs) {
+      const input = document.querySelector(SEARCH_INPUT_SELECTOR);
+      if (input) return input;
+      await sleep(150);
+    }
+    return null;
   };
 
-  const DEFAULT_LOGIN_URL = 'https://gemini.google.com/app';
-
-  /** @type {Map<string, AbortController>} */
-  const controllers = new Map();
-
-  /** @type {Promise<any>|null} */
-  let adapterPromise = null;
-  let loginUrl = DEFAULT_LOGIN_URL;
-
-  function loadAdapter() {
-    if (!adapterPromise) {
-      adapterPromise = import(chrome.runtime.getURL('lib/gemini-adapter.js'))
-        .then(function (adapterMod) {
-          return import(chrome.runtime.getURL('lib/selectors/loader.js')).then(
-            function (loaderMod) {
-              function hydrateFromPack() {
-                try {
-                  const pack = loaderMod.getPlatformSelectors('gemini');
-                  if (pack && pack.loginUrl) {
-                    loginUrl = pack.loginUrl;
-                  }
-                } catch (_e) {
-                  // Keep defaults if pack hydrate fails.
-                }
-                return adapterMod;
-              }
-              // Local pack first — never block search on a hung remote pack fetch (B2).
-              hydrateFromPack();
-              var refreshOpts = {
-                fetchImpl:
-                  typeof fetch === 'function'
-                    ? fetch.bind(globalThis)
-                    : function () {
-                        return Promise.reject(new TypeError('fetch unavailable'));
-                      },
-              };
-              loaderMod.refreshSelectorPack(refreshOpts).then(hydrateFromPack, function () {});
-              return adapterMod;
-            },
-          );
-        })
-        .catch(function (err) {
-          adapterPromise = null;
-          throw err;
-        });
-    }
-    return adapterPromise;
-  }
-
-  function isAbortError(err) {
-    return !!err && (err.name === 'AbortError' || err.code === 'ABORT_ERR');
-  }
-
-  function isImportError(err) {
-    if (!err) return false;
-    const name = String(err.name || '');
-    const message = String(err.message || '');
-    return (
-      name === 'TypeError' ||
-      /Failed to fetch/i.test(message) ||
-      /error loading dynamically imported module/i.test(message) ||
-      /Importing a module script failed/i.test(message)
+  const looksLoggedOut = () => {
+    if (document.querySelector('a[href*="accounts.google.com"]')) return true;
+    const signInText = /sign in/i;
+    return [...document.querySelectorAll('a, button')].some((el) =>
+      signInText.test(el.textContent || ''),
     );
-  }
+  };
 
-  function abortRequest(requestId) {
-    const existing = controllers.get(requestId);
-    if (existing) {
-      existing.abort();
-      controllers.delete(requestId);
+  const scrapeResults = () =>
+    [...document.querySelectorAll(RESULT_LINK_SELECTOR)].map((a) => {
+      const title = a.querySelector('.title')?.textContent ?? '';
+      const dateText = a.querySelector('.date')?.textContent ?? '';
+      return { title: title.trim(), dateText: dateText.trim(), href: a.getAttribute('href') };
+    });
+
+  const waitForResultsToSettle = async () => {
+    await sleep(500);
+    let lastCount = -1;
+    for (let i = 0; i < 6; i++) {
+      const count = document.querySelectorAll(RESULT_LINK_SELECTOR).length;
+      if (count === lastCount) break;
+      lastCount = count;
+      await sleep(300);
     }
-  }
+  };
 
-  async function handleSearch(message) {
-    const requestId = message.requestId;
-    const query = message.query;
-    abortRequest(requestId);
-    const ac = new AbortController();
-    controllers.set(requestId, ac);
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (!message || message.type !== GEMINI_TAB_SEARCH) return false;
 
-    try {
-      const adapterMod = await loadAdapter();
-      const outcome = await adapterMod.searchGemini({
-        query: query,
-        document: document,
-        signal: ac.signal,
-        platformBudgetMs:
-          typeof message.platformBudgetMs === 'number' ? message.platformBudgetMs : undefined,
-      });
-      return {
-        type: MSG.GEMINI_SEARCH_RESULT,
-        requestId: requestId,
-        platform: 'gemini',
-        capability: outcome.capability || 'title-match',
-        status: outcome.status,
-        results: outcome.results || [],
-        errorCode: outcome.errorCode,
-        message: outcome.message,
-        loginUrl: outcome.loginUrl || loginUrl,
-      };
-    } catch (err) {
-      if (isAbortError(err)) {
-        return {
-          type: MSG.GEMINI_SEARCH_RESULT,
-          requestId: requestId,
-          platform: 'gemini',
-          status: 'unavailable',
-          results: [],
-          errorCode: 'aborted',
-          message: 'Gemini is temporarily unavailable.',
-        };
+    (async () => {
+      try {
+        const input = await waitForSearchInput(4000);
+        if (!input) {
+          if (looksLoggedOut()) {
+            sendResponse({ status: 'login_required' });
+          } else {
+            sendResponse({ status: 'error', message: 'Gemini search box did not load.' });
+          }
+          return;
+        }
+
+        const setter = Object.getOwnPropertyDescriptor(
+          window.HTMLInputElement.prototype,
+          'value',
+        ).set;
+        setter.call(input, message.query);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+
+        await waitForResultsToSettle();
+
+        sendResponse({ status: 'ok', hits: scrapeResults() });
+      } catch (err) {
+        sendResponse({ status: 'error', message: String(err?.message ?? err) });
       }
-      return {
-        type: MSG.GEMINI_SEARCH_RESULT,
-        requestId: requestId,
-        platform: 'gemini',
-        status: 'unavailable',
-        results: [],
-        errorCode: isImportError(err) ? 'adapter_import_failed' : 'content_exception',
-        message: 'Gemini is temporarily unavailable.',
-      };
-    } finally {
-      controllers.delete(requestId);
-    }
-  }
+    })();
 
-  chrome.runtime.onMessage.addListener(function (message, _sender, sendResponse) {
-    if (!message || typeof message.type !== 'string') return false;
-
-    if (message.type === MSG.COGIS_PING) {
-      sendResponse({ ok: true, platform: 'gemini' });
-      return false;
-    }
-
-    if (message.type === MSG.GEMINI_SEARCH_CANCEL) {
-      abortRequest(message.requestId);
-      sendResponse({ ok: true });
-      return false;
-    }
-
-    if (message.type !== MSG.GEMINI_SEARCH) return false;
-
-    handleSearch(message).then(sendResponse);
     return true;
   });
-})();
+}
