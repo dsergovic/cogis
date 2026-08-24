@@ -107,7 +107,9 @@ export async function searchGrok(query) {
     let res;
     try {
       const url = `${ORIGIN}/rest/app-chat/conversations?pageSize=60&searchQuery=${encodeURIComponent(query)}`;
-      res = await retryOnce(() => fetch(url, { credentials: 'include', signal: controller.signal }));
+      res = await retryOnce(() =>
+        fetch(url, { credentials: 'include', signal: controller.signal }),
+      );
     } catch (err) {
       if (err?.name === 'AbortError') return { status: 'timeout' };
       return { status: 'unavailable', message: 'Could not reach Grok.' };
