@@ -10,7 +10,7 @@
     "service_worker": "background/service-worker.js",
     "type": "module"
   },
-  "permissions": ["scripting"],
+  "permissions": ["scripting", "storage"],
   "host_permissions": [
     "https://chatgpt.com/*",
     "https://claude.ai/*",

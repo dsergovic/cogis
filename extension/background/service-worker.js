@@ -9,8 +9,8 @@ import { searchGrok } from '../lib/grok-adapter.js';
 
 const tracker = createRequestTracker();
 
-const POPUP_WIDTH = 560;
-const POPUP_HEIGHT = 620;
+const POPUP_WIDTH = 640;
+const POPUP_HEIGHT = 700;
 
 /** Id of the currently open popup window, if any — so a second icon click focuses it instead of opening a duplicate. */
 let popupWindowId = null;

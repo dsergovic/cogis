@@ -26,7 +26,8 @@
  * Auth mapping: no accessToken from /api/auth/session, or 401 from search ->
  * login_required. 403/429/5xx -> unavailable. Network error/abort -> timeout.
  * This is intentionally the generic S5-style mapping, not something ChatGPT
- * needed its own rule for.
+ * needed its own rule for. A raw network-level failure (not a bad status
+ * code) is retried once before being treated as unavailable/timeout.
  *
  * Runs from the background service worker directly — no content script or
  * tab needed. `host_permissions` for chatgpt.com lets the extension send an
@@ -35,6 +36,7 @@
 
 import { anyDateToIso, stripForbiddenFields, pointerHasForbiddenFields } from './results.js';
 import { PLATFORM_TIMEOUT_MS, MAX_RESULTS_PER_PLATFORM } from './timeouts.js';
+import { retryOnce } from './retry.js';
 
 const ORIGIN = 'https://chatgpt.com';
 
@@ -88,10 +90,12 @@ export async function searchChatgpt(query) {
   try {
     let session;
     try {
-      const sessionRes = await fetch(`${ORIGIN}/api/auth/session`, {
-        credentials: 'include',
-        signal: controller.signal,
-      });
+      const sessionRes = await retryOnce(() =>
+        fetch(`${ORIGIN}/api/auth/session`, {
+          credentials: 'include',
+          signal: controller.signal,
+        }),
+      );
       if (!sessionRes.ok) {
         return { status: 'login_required', loginUrl: `${ORIGIN}/` };
       }
@@ -108,16 +112,18 @@ export async function searchChatgpt(query) {
 
     let searchRes;
     try {
-      searchRes = await fetch(`${ORIGIN}/backend-api/global/search`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ query, cursor: null }),
-        signal: controller.signal,
-      });
+      searchRes = await retryOnce(() =>
+        fetch(`${ORIGIN}/backend-api/global/search`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ query, cursor: null }),
+          signal: controller.signal,
+        }),
+      );
     } catch (err) {
       if (err?.name === 'AbortError') return { status: 'timeout' };
       return { status: 'unavailable', message: 'Could not reach ChatGPT.' };

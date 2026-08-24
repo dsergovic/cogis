@@ -131,13 +131,35 @@ export function dedupePointers(pointers, max) {
 }
 
 /**
+ * Append a Text Fragment (`:~:text=`) so the browser scrolls to and
+ * highlights the user's own typed query on arrival, if it's found verbatim
+ * on the page. Only ever built from the user's own query — never from a
+ * lab's snippet/body text, which this project never retains. Purely
+ * additive: a page or browser that doesn't support it just ignores it and
+ * lands where it would have anyway.
+ * @param {string} url
+ * @param {string|null|undefined} query
+ * @returns {string}
+ */
+export function withTextFragment(url, query) {
+  if (typeof url !== 'string' || !url) return url;
+  const q = typeof query === 'string' ? query.trim() : '';
+  if (!q) return url;
+  const encoded = encodeURIComponent(q).replace(/-/g, '%2D');
+  return url.includes('#') ? `${url}:~:text=${encoded}` : `${url}#:~:text=${encoded}`;
+}
+
+/**
  * Click cascade href: deep link → prefill URL (if supported) → lab home.
+ * The Text Fragment highlight is only attached to an actual deep link — a
+ * prefill or home-page fallback isn't landing on specific content.
  * @param {import('./messaging.js').PointerRecord|null|undefined} hit
  * @param {string|null|undefined} prefillUrl
  * @param {string} homeUrl
+ * @param {string|null|undefined} [query]
  */
-export function resolveResultHref(hit, prefillUrl, homeUrl) {
-  if (hit?.deepLinkUrl) return hit.deepLinkUrl;
+export function resolveResultHref(hit, prefillUrl, homeUrl, query) {
+  if (hit?.deepLinkUrl) return withTextFragment(hit.deepLinkUrl, query);
   if (hit?.prefillSupported && prefillUrl) return prefillUrl;
   return homeUrl;
 }

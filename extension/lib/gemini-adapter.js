@@ -44,7 +44,9 @@
  * — visibly, if done in a tab the user is looking at — this adapter always
  * opens its own tab inside a new, off-screen background window (so it never
  * appears in the user's tab strip) rather than adopting one of the user's
- * open Gemini tabs, and always closes that window afterward.
+ * open Gemini tabs, and always closes that window afterward. Opening it is
+ * retried once on failure — occasionally transient under normal browser
+ * load, not usually a sign Gemini itself is unreachable.
  *
  * Auth mapping: content script reports `login_required` when the search
  * input never appears and a sign-in affordance is present; otherwise a
@@ -59,6 +61,7 @@ import {
   createHiddenTab,
   closeHiddenWindow,
 } from './tab-messaging.js';
+import { retryOnce } from './retry.js';
 
 const ORIGIN = 'https://gemini.google.com';
 
@@ -163,7 +166,7 @@ export async function searchGemini(query) {
   let tabId;
   let windowId;
   try {
-    const hidden = await createHiddenTab(`${ORIGIN}/search`);
+    const hidden = await retryOnce(() => createHiddenTab(`${ORIGIN}/search`));
     tabId = hidden.tabId;
     windowId = hidden.windowId;
     await waitForTabComplete(tabId, TAB_COMPLETE_MS);

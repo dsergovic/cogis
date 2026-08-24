@@ -70,7 +70,7 @@ body.has-searched header {
 }
 
 header h1 {
-  font-size: 30px;
+  font-size: 32px;
   font-weight: 500;
   letter-spacing: -0.5px;
   margin: 0;
@@ -78,24 +78,28 @@ header h1 {
 }
 
 body.has-searched header h1 {
-  font-size: 17px;
+  font-size: 19px;
+}
+
+#app-header {
+  cursor: pointer;
 }
 
 #search-form {
   width: 100%;
-  max-width: 460px;
+  max-width: 500px;
 }
 
 #query-input {
   width: 100%;
   box-sizing: border-box;
-  padding: 11px 18px;
-  font-size: 14px;
+  padding: 13px 20px;
+  font-size: 16px;
   font-family: inherit;
   color: var(--fg);
   background: var(--bg-raised);
   border: 1px solid var(--border);
-  border-radius: 24px;
+  border-radius: 26px;
   box-shadow: var(--input-shadow);
   outline: none;
 }
@@ -106,15 +110,118 @@ body.has-searched header h1 {
 
 .hint,
 .footnote {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--fg-muted);
-  margin: 10px 0 0;
+  margin: 12px 0 0;
   text-align: center;
+}
+
+.hint-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+}
+
+.hint-row .hint {
+  margin: 12px 0 0;
+}
+
+.hint-separator {
+  font-size: 13px;
+  color: var(--fg-muted);
+  margin-top: 12px;
+}
+
+/* Standard link styling, shared by every clickable link/link-styled button
+   in the popup: accent color, no underline until hovered/focused — blue
+   means "this is a link", underline means "this is where a click goes". */
+.link-btn,
+.group li a,
+.group .status-note a {
+  color: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.link-btn:hover,
+.link-btn:focus-visible,
+.group li a:hover,
+.group li a:focus-visible,
+.group .status-note a:hover,
+.group .status-note a:focus-visible {
+  text-decoration: underline;
+}
+
+.link-btn {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.settings-toggle {
+  margin: 12px 0 0;
+}
+
+.settings-panel[hidden] {
+  display: none;
+}
+
+.settings-panel {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 500px;
+  margin-top: 12px;
+  padding: 14px 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-raised);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-panel-header {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.settings-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.settings-row input[type='checkbox'] {
+  margin: 0;
+  width: 15px;
+  height: 15px;
+}
+
+.settings-row input[type='checkbox']:disabled {
+  cursor: not-allowed;
+}
+
+.ext-icon {
+  color: var(--fg-muted);
+  font-size: 12px;
 }
 
 #results {
   width: 100%;
-  max-width: 460px;
+  max-width: 500px;
   margin: 0 auto;
   padding: 0 24px 18px;
   overflow-y: auto;
@@ -122,15 +229,15 @@ body.has-searched header h1 {
 }
 
 .group {
-  margin-top: 12px;
+  margin-top: 14px;
 }
 
 .group h2 {
-  font-size: 12px;
-  margin: 0 0 4px;
+  font-size: 14px;
+  margin: 0 0 6px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .group h2 .name {
@@ -140,7 +247,7 @@ body.has-searched header h1 {
 .group .capability {
   font-weight: normal;
   color: var(--fg-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .group ul {
@@ -150,22 +257,11 @@ body.has-searched header h1 {
 }
 
 .group li {
-  padding: 3px 0;
-  font-size: 12px;
-}
-
-.group li a {
-  text-decoration: none;
-  color: var(--accent);
+  padding: 4px 0;
+  font-size: 14px;
 }
 
 .group .status-note {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--fg-muted);
-}
-
-.group .status-note a {
-  color: var(--accent);
-  text-decoration: underline;
-  cursor: pointer;
 }

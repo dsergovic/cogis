@@ -3,6 +3,11 @@ import { PLATFORM_ORDER, getPlatform, FOOTNOTE_TEXT, loginRequiredCopy } from '.
 import { resolveResultHref, truncateTitle } from '../lib/results.js';
 import { POPUP_WATCHDOG_MS } from '../lib/timeouts.js';
 import { perplexityPrefillUrl } from '../lib/perplexity-adapter.js';
+import {
+  toggleDisabledPlatform,
+  loadDisabledPlatforms,
+  saveDisabledPlatforms,
+} from '../lib/settings.js';
 
 /** Per-platform prefill URL builders, for platforms whose adapter supports one. */
 const PREFILL_BUILDERS = {
@@ -13,7 +18,13 @@ const form = document.getElementById('search-form');
 const input = document.getElementById('query-input');
 const resultsEl = document.getElementById('results');
 const emptyHintEl = document.getElementById('empty-hint');
+const hintSeparatorEl = document.getElementById('hint-separator');
 const footnoteEl = document.getElementById('footnote');
+const settingsToggle = document.getElementById('settings-toggle');
+const settingsPanel = document.getElementById('settings-panel');
+const settingsClose = document.getElementById('settings-close');
+const settingsRows = document.getElementById('settings-rows');
+const appHeader = document.getElementById('app-header');
 
 let activeRequestId = null;
 let activeQuery = '';
@@ -24,12 +35,19 @@ let groups = {};
 /** Platforms the user has collapsed. Session-only UI state — cleared at the start of each new search. */
 const collapsedPlatforms = new Set();
 
+/** Platforms excluded from search via the settings panel. Loaded from storage at startup. */
+let disabledPlatforms = new Set();
+
+function enabledPlatformIds() {
+  return PLATFORM_ORDER.filter((id) => !disabledPlatforms.has(id));
+}
+
 /**
  * @param {'idle'|'loading'} status
  */
 function resetGroups(status) {
   groups = {};
-  for (const platformId of PLATFORM_ORDER) {
+  for (const platformId of enabledPlatformIds()) {
     groups[platformId] = { status, results: [] };
   }
 }
@@ -46,11 +64,12 @@ function render() {
     return;
   }
 
-  const anyTitleMatch = PLATFORM_ORDER.some((id) => getPlatform(id)?.capability === 'title-match');
+  const enabledIds = enabledPlatformIds();
+  const anyTitleMatch = enabledIds.some((id) => getPlatform(id)?.capability === 'title-match');
   footnoteEl.hidden = !anyTitleMatch;
   footnoteEl.textContent = FOOTNOTE_TEXT;
 
-  for (const platformId of PLATFORM_ORDER) {
+  for (const platformId of enabledIds) {
     const platform = getPlatform(platformId);
     const group = groups[platformId] ?? { status: 'idle', results: [] };
     const isCollapsed = collapsedPlatforms.has(platformId);
@@ -145,20 +164,16 @@ function render() {
         const li = document.createElement('li');
         const a = document.createElement('a');
         const prefillUrl = PREFILL_BUILDERS[platformId]?.(activeQuery) ?? null;
-        a.href = resolveResultHref(hit, prefillUrl, platform?.origin ?? '#');
+        a.href = resolveResultHref(hit, prefillUrl, platform?.origin ?? '#', activeQuery);
         a.target = '_blank';
         a.rel = 'noopener noreferrer';
         a.title = hit.title;
         a.textContent = truncateTitle(hit.title);
-        a.addEventListener('click', (event) => {
-          const isExplicitNewTabGesture =
-            event.button === 1 || event.ctrlKey || event.metaKey || event.shiftKey;
-          if (isExplicitNewTabGesture) return; // leave the window open, as requested
-          // A plain click: let the link open (target="_blank" already sends it
-          // to a real browser tab), then dismiss this window like a modal that
-          // closes once you've navigated away.
-          window.close();
-        });
+        const extIcon = document.createElement('span');
+        extIcon.className = 'ext-icon';
+        extIcon.setAttribute('aria-hidden', 'true');
+        extIcon.textContent = ' ↗';
+        a.appendChild(extIcon);
         li.appendChild(a);
         list.appendChild(li);
       }
@@ -183,15 +198,18 @@ function startSearch(query) {
   activeQuery = query;
   collapsedPlatforms.clear();
   document.body.classList.add('has-searched');
+  closeSettingsPanel();
   resetGroups('loading');
   render();
 
-  chrome.runtime.sendMessage(createSearchRequest({ requestId, query })).catch(() => {});
+  chrome.runtime
+    .sendMessage(createSearchRequest({ requestId, query, platforms: enabledPlatformIds() }))
+    .catch(() => {});
 
   clearWatchdog();
   watchdogTimer = setTimeout(() => {
     if (activeRequestId !== requestId) return;
-    for (const platformId of PLATFORM_ORDER) {
+    for (const platformId of enabledPlatformIds()) {
       if (groups[platformId]?.status === 'loading') {
         groups[platformId] = { status: 'timeout', results: [] };
       }
@@ -200,11 +218,69 @@ function startSearch(query) {
   }, POPUP_WATCHDOG_MS);
 }
 
+/**
+ * Rebuild the settings-panel checkboxes from the current disabled-platform
+ * set. Toggling one persists immediately (no separate save step) and, if no
+ * search has run yet, refreshes the idle placeholder list to match.
+ */
+function renderSettingsPanel() {
+  settingsRows.replaceChildren();
+  for (const platformId of PLATFORM_ORDER) {
+    const platform = getPlatform(platformId);
+    const isEnabled = !disabledPlatforms.has(platformId);
+    const enabledCount = PLATFORM_ORDER.length - disabledPlatforms.size;
+
+    const row = document.createElement('label');
+    row.className = 'settings-row';
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = isEnabled;
+    checkbox.disabled = isEnabled && enabledCount <= 1;
+    checkbox.addEventListener('change', () => {
+      const next = toggleDisabledPlatform(PLATFORM_ORDER, [...disabledPlatforms], platformId);
+      disabledPlatforms = new Set(next);
+      saveDisabledPlatforms(next).catch(() => {});
+      renderSettingsPanel();
+      if (!document.body.classList.contains('has-searched')) {
+        resetGroups('idle');
+        render();
+      }
+    });
+
+    row.appendChild(checkbox);
+    row.appendChild(document.createTextNode(platform?.label ?? platformId));
+    settingsRows.appendChild(row);
+  }
+}
+
+function closeSettingsPanel() {
+  settingsPanel.hidden = true;
+  settingsToggle.setAttribute('aria-expanded', 'false');
+}
+
+settingsToggle.addEventListener('click', () => {
+  const nextHidden = !settingsPanel.hidden;
+  settingsPanel.hidden = nextHidden;
+  settingsToggle.setAttribute('aria-expanded', String(!nextHidden));
+});
+
+settingsClose.addEventListener('click', closeSettingsPanel);
+
+// Clicking the wordmark reloads and resets the popup, like a site logo —
+// but it's deliberately not styled as a link (no accent color, no
+// underline): it's just given a pointer cursor so it still reads as
+// clickable.
+appHeader.addEventListener('click', () => {
+  location.reload();
+});
+
 form.addEventListener('submit', (event) => {
   event.preventDefault();
   const query = normalizeQuery(input.value);
   if (!query) return;
   emptyHintEl.hidden = true;
+  hintSeparatorEl.hidden = true;
   startSearch(query);
 });
 
@@ -240,5 +316,12 @@ window.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') window.close();
 });
 
-resetGroups('idle');
-render();
+async function init() {
+  const stored = await loadDisabledPlatforms();
+  disabledPlatforms = new Set(stored.filter((id) => PLATFORM_ORDER.includes(id)));
+  renderSettingsPanel();
+  resetGroups('idle');
+  render();
+}
+
+init();

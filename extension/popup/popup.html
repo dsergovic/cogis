@@ -7,7 +7,7 @@
   </head>
   <body>
     <div class="search-stage">
-      <header>
+      <header id="app-header">
         <h1>Cogis</h1>
       </header>
       <form id="search-form">
@@ -18,7 +18,19 @@
           autocomplete="off"
         />
       </form>
-      <p id="empty-hint" class="hint">Type a query and press Enter.</p>
+      <div class="hint-row">
+        <p id="empty-hint" class="hint">Type a query and press Enter.</p>
+        <span id="hint-separator" class="hint-separator" aria-hidden="true">·</span>
+        <button type="button" id="settings-toggle" class="link-btn settings-toggle" aria-expanded="false">
+          Settings
+        </button>
+      </div>
+      <div id="settings-panel" class="settings-panel" hidden>
+        <div class="settings-panel-header">
+          <button type="button" id="settings-close" class="link-btn settings-close">Close</button>
+        </div>
+        <div id="settings-rows" class="settings-rows"></div>
+      </div>
     </div>
     <div id="results" role="region" aria-label="Search results"></div>
     <p id="footnote" class="footnote" hidden></p>

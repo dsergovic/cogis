@@ -62,6 +62,7 @@ import {
   createHiddenTab,
   closeHiddenWindow,
 } from './tab-messaging.js';
+import { retryOnce } from './retry.js';
 
 const ORIGIN = 'https://www.perplexity.ai';
 
@@ -120,7 +121,9 @@ export function normalizePerplexityHit(raw) {
  * Find an existing perplexity.ai tab, or open one in a new, off-screen
  * background window so it never appears in the user's tab strip. Returns the
  * tab id and, if we created it, the window id to close afterward — an
- * adopted user tab (and its window) is never touched.
+ * adopted user tab (and its window) is never touched. Opening the hidden
+ * window is retried once on failure — occasionally transient under normal
+ * browser load, not usually a sign the platform itself is unreachable.
  * @returns {Promise<{ tabId: number, created: boolean, windowId: number|null }>}
  */
 async function ensurePerplexityTab() {
@@ -131,7 +134,7 @@ async function ensurePerplexityTab() {
     return { tabId: existing[0].id, created: false, windowId: null };
   }
 
-  const hidden = await createHiddenTab(`${ORIGIN}/`);
+  const hidden = await retryOnce(() => createHiddenTab(`${ORIGIN}/`));
   await waitForTabComplete(hidden.tabId, TAB_COMPLETE_MS);
   return { tabId: hidden.tabId, created: true, windowId: hidden.windowId };
 }

@@ -7,6 +7,7 @@ import {
   filterPointersByTitle,
   dedupePointers,
   resolveResultHref,
+  withTextFragment,
   truncateTitle,
   TITLE_DISPLAY_MAX,
 } from '../../extension/lib/results.js';
@@ -113,6 +114,51 @@ describe('resolveResultHref', () => {
   it('falls back to home otherwise', () => {
     expect(resolveResultHref({}, null, 'https://home')).toBe('https://home');
     expect(resolveResultHref(null, null, 'https://home')).toBe('https://home');
+  });
+});
+
+describe('withTextFragment', () => {
+  it('appends a text fragment for a url with no existing hash', () => {
+    expect(withTextFragment('https://example.com/c/1', 'my query')).toBe(
+      'https://example.com/c/1#:~:text=my%20query',
+    );
+  });
+
+  it('appends directly after an existing hash', () => {
+    expect(withTextFragment('https://example.com/c/1#section', 'my query')).toBe(
+      'https://example.com/c/1#section:~:text=my%20query',
+    );
+  });
+
+  it('escapes hyphens, which encodeURIComponent leaves untouched', () => {
+    expect(withTextFragment('https://example.com/c/1', 'well-known')).toBe(
+      'https://example.com/c/1#:~:text=well%2Dknown',
+    );
+  });
+
+  it('trims whitespace and returns the url unchanged for an empty query', () => {
+    expect(withTextFragment('https://example.com/c/1', '   ')).toBe('https://example.com/c/1');
+    expect(withTextFragment('https://example.com/c/1', null)).toBe('https://example.com/c/1');
+  });
+
+  it('returns non-string urls unchanged', () => {
+    expect(withTextFragment(null, 'query')).toBeNull();
+    expect(withTextFragment('', 'query')).toBe('');
+  });
+});
+
+describe('resolveResultHref with a query (text fragment)', () => {
+  it('attaches a text fragment to a deep link when a query is given', () => {
+    expect(
+      resolveResultHref({ deepLinkUrl: 'https://deep' }, 'https://prefill', 'https://home', 'hi'),
+    ).toBe('https://deep#:~:text=hi');
+  });
+
+  it('does not attach a text fragment to a prefill or home fallback', () => {
+    expect(
+      resolveResultHref({ prefillSupported: true }, 'https://prefill', 'https://home', 'hi'),
+    ).toBe('https://prefill');
+    expect(resolveResultHref({}, null, 'https://home', 'hi')).toBe('https://home');
   });
 });
 

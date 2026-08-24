@@ -41,10 +41,13 @@
  *
  * Auth mapping: 401 -> login_required. Other non-ok -> unavailable. Network
  * error/abort -> timeout. Generic S5-style mapping, no Grok-specific rule.
+ * A raw network-level failure (not a bad status code) is retried once
+ * before being treated as unavailable/timeout.
  */
 
 import { anyDateToIso, stripForbiddenFields, pointerHasForbiddenFields } from './results.js';
 import { PLATFORM_TIMEOUT_MS, MAX_RESULTS_PER_PLATFORM } from './timeouts.js';
+import { retryOnce } from './retry.js';
 
 const ORIGIN = 'https://grok.com';
 
@@ -104,7 +107,7 @@ export async function searchGrok(query) {
     let res;
     try {
       const url = `${ORIGIN}/rest/app-chat/conversations?pageSize=60&searchQuery=${encodeURIComponent(query)}`;
-      res = await fetch(url, { credentials: 'include', signal: controller.signal });
+      res = await retryOnce(() => fetch(url, { credentials: 'include', signal: controller.signal }));
     } catch (err) {
       if (err?.name === 'AbortError') return { status: 'timeout' };
       return { status: 'unavailable', message: 'Could not reach Grok.' };

@@ -69,6 +69,13 @@ export async function createHiddenTab(url) {
   });
   const tabId = win.tabs?.[0]?.id;
   if (typeof tabId !== 'number' || typeof win.id !== 'number') {
+    // The window was created but its tab id never showed up — close it
+    // rather than leaking an invisible, unusable off-screen window that
+    // would otherwise sit at this same position for the rest of the
+    // session.
+    if (typeof win.id === 'number') {
+      chrome.windows.remove(win.id).catch(() => {});
+    }
     throw new Error('Could not open a hidden tab.');
   }
   return { tabId, windowId: win.id };

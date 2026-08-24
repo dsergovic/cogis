@@ -27,6 +27,8 @@
  *
  * Auth mapping: 401 -> login_required. Other non-ok -> unavailable. Network
  * error/abort -> timeout. Generic S5-style mapping, no Claude-specific rule.
+ * A raw network-level failure (not a bad status code) is retried once
+ * before being treated as unavailable/timeout.
  */
 
 import {
@@ -36,6 +38,7 @@ import {
   dedupePointers,
 } from './results.js';
 import { PLATFORM_TIMEOUT_MS, MAX_RESULTS_PER_PLATFORM } from './timeouts.js';
+import { retryOnce } from './retry.js';
 
 const ORIGIN = 'https://claude.ai';
 
@@ -87,7 +90,7 @@ export function normalizeClaudeHit(raw) {
  */
 async function searchOrg(orgUuid, query, signal) {
   const url = `${ORIGIN}/api/organizations/${encodeURIComponent(orgUuid)}/conversation/search/v2?query=${encodeURIComponent(query)}&n=25&target_snippet_size=100`;
-  const res = await fetch(url, { credentials: 'include', signal });
+  const res = await retryOnce(() => fetch(url, { credentials: 'include', signal }));
   if (!res.ok) {
     const err = new Error(`Claude org search failed (${res.status})`);
     err.code = res.status;
@@ -111,10 +114,12 @@ export async function searchClaude(query) {
   try {
     let orgs;
     try {
-      const orgsRes = await fetch(`${ORIGIN}/api/organizations`, {
-        credentials: 'include',
-        signal: controller.signal,
-      });
+      const orgsRes = await retryOnce(() =>
+        fetch(`${ORIGIN}/api/organizations`, {
+          credentials: 'include',
+          signal: controller.signal,
+        }),
+      );
       if (orgsRes.status === 401) {
         return { status: 'login_required', loginUrl: `${ORIGIN}/login` };
       }
