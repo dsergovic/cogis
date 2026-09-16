@@ -1,12 +1,12 @@
 # Cogis.ai — Decision Document
 
-**Status:** Open (not a README, not a one-pager)  
-**Owner:** David Sergovic (decide) · Aria (maintain)  
+**Status:** Open · working decision doc (not a README)  
+**Maintain:** Aria (propose) · owner decides  
 **Entity:** Refinery LLC · Brand working title: **Cogis.ai** · Category phrase: **Ephemeral Trust**  
-**Last updated:** Sun Sep 6, 2026, ~3:30 PM ET  
-**Supersedes / folds in:** Instinct overnight strategy brief (`instinct-oss-strategy-brief.md`), Cogis Ephemeral Trust one-pager (David draft), Aria–David chat locks through Sep 6 afternoon  
+**Last updated:** Mon Sep 7, 2026, ~10:20 AM ET  
+**History / evolution:** See sibling files in `docs/` (overnight brief, Gemini notes, earlier drafts). This file is the current lock — treat it like any other dev artifact (edit locally; don’t treat chat as source of truth).
 
-**How to use this doc:** Read §0–§2 for the locked product shape. Read §3 for agreements vs pushbacks. Read §4 steelman before greenlighting. Read §5 before opening free SMS or shipping a public GitHub. Open questions live in §8 and on Desk.
+**How to use:** §0–§2 = product shape. §3 = what we locked vs pushed back on. §4 = steelman before greenlighting. §5 = costs (hosting-first). §8 = open questions.
 
 ---
 
@@ -14,244 +14,222 @@
 
 | Decision | Lock |
 |----------|------|
-| Category | New space: **glass-box desktop + SMS**, not “safer Instinct,” not “easier OpenClaw” |
+| Why it exists | Fun, open-source an important process, show that confirm-first / glass-box personal agents don’t need a giant closed stack. Not a capital war against closed SMS agents or frontier labs. |
+| Category | **Glass-box desktop + SMS**, confirm-first, ephemeral trust — not “safer clone of a closed agent,” not “easier OpenClaw README” |
 | Trust model | **Confirm-first** · **Ephemeral Trust** · nuke switch · no silent sends |
 | Install bar | **Download → create account → log in.** Nothing else for normals |
-| BYOK | **Scratched entirely** (no Twilio keys, no LLM keys for the default path) |
-| Inference | **Cogis-billed** (hosted model spend under Refinery accounts) |
-| SMS | **Cogis-hosted Twilio** (user texts a normal number); free demo texts before full use; paid for real services |
+| Twilio | **Embedded in signup** — provision / connect Twilio as part of Cogis signup, not “go get a SID and paste it here.” User’s Twilio where the platform allows; Cogis is not trying to eat SMS COGS. |
+| BYOK paste | **Still scratched** as a DIY homework step. Embedded Twilio signup is the anti-paste path. |
+| Inference | Prefer paths that keep Cogis burn near **hosting only** (local / cheap / user-routed). No appetite for another consumer subscription if we can avoid it. Details still open (§8). |
+| Competitive honesty | Frontier chat products already surface **Connect Gmail / Calendar** next to the input box. We do **not** compete on “we also connect mail.” Wedge is open source + glass-box + confirm-first + SMS that feels normal. |
 | Push-via-app | **Scratched** (extra download friction) |
-| MVP loop | Gmail + Calendar · draft → approve in glass box → execute · then revoke session posture |
-| Non-goals (near-term) | Act-first autonomy, Resy/phone-tree ops, screen takeover, training on user content, OpenClaw-only distribution as the product |
+| MVP loop | Still Gmail + Calendar as the first *workflow* to prove confirm-first — but messaging is trust/visibility, not “we uniquely connect your inbox.” |
+| PoC kill switch | **$100 / month** total Cogis variable burn. Park or kill free paths before that trips. |
+| Non-goals (near-term) | Act-first autonomy, restaurant/phone-tree ops, screen takeover, training on user content, OpenClaw-only distribution as the product, capital arms race on polish |
 
 ---
 
 ## 1. Why this exists (problem)
 
-Personal AI today forces a false choice:
+Personal AI today still forces a false choice:
 
-1. **Instinct-class cloud black box** — SMS convenience; permanent OAuth; act-first; data on their servers; invite FOMO; ~$2.5B raise on use-layer packaging.
-2. **OpenClaw-class developer OSS** — local control; clone repos, Docker, `.env`, paste keys; hostile to non-techies.
+1. **Closed cloud agents** — SMS convenience; permanent OAuth; act-first; data on their servers; invite / capital heat.
+2. **Developer OSS** — local control; clone repos, Docker, `.env`, paste keys; hostile to non-techies.
 3. **Intrusive desktop agents** — screen takeover, blocked productivity, unclear retention after the task.
 
-**Cogis thesis:** Frictionless consumer setup *and* zero-standing-trust architecture are compatible. SMS makes it feel real to the public. The glass-box desktop is where trust is earned and high-stakes actions are approved. Hosted inference + hosted SMS keep the install bar intact.
+**Frontier labs are already absorbing the “connect your tools” surface.** Chat products now put Connect Gmail / Calendar right over the input. Competing on that checkbox is a losing game for a small open project.
 
-David’s strategic conviction (overnight, reinforced afternoon): frontier labs did the hard AI work; Instinct is a more advanced OpenClaw-shaped *product*, not a $2.5B-defensible tech moat; someone will do the open/trustworthy version — it might as well be us — **but** it cannot require developer setup or key pasting if we want the broader public.
+**Cogis thesis:** Open-source the *process* people actually care about — confirm-first work, a glass box you can watch, ephemeral trust, SMS that doesn’t feel like a science project — without asking normals to become ops engineers. Setup should feel like a consumer app. Costs should collapse toward **hosting**, not another subscription people won’t want.
+
+This is allowed to be a fun project that matters on principle. If it gets attention, great; the doc doesn’t need a vanity thesis.
 
 ---
 
-## 2. Product shape (substantial)
+## 2. Product shape
 
 ### 2.1 Two surfaces, one product
 
 | Surface | Job |
 |---------|-----|
-| **SMS** | Ambient entry. Free “talk to Cogis” before deep commitment. Light commands. “3 drafts ready — open Cogis.” Required for broader public belief. |
-| **Glass-box desktop** (Tauri-class native app) | Visible work. Real-time audit trail. Staging queue for drafts. Approve / tweak / reject. Nuke switch. OAuth connect. Where sovereignty is felt. |
+| **SMS** | Ambient entry. Talk to Cogis like a normal number. Light commands. “3 drafts ready — open Cogis.” Public belief needs this. |
+| **Glass-box desktop** (Tauri-class) | Visible work. Real-time audit trail. Staging queue. Approve / tweak / reject. Nuke switch. OAuth connect. Where sovereignty is felt. |
 
-Neither surface alone is enough:
-- SMS-only → Instinct’s trust failure mode (black box, hard to inspect).
+Neither alone is enough:
+- SMS-only → black-box trust failure (hard to inspect).
 - Desktop-only → loses mass intuition (“I just text my assistant”).
 
 ### 2.2 Lifecycle
 
-1. **Pre-signup:** User texts Cogis’s public number. Demo conversation only. No Gmail/Calendar. Hard rate limits. Captcha / phone reputation / abuse controls mandatory (see §5).
-2. **Signup:** Account + desktop install + login. OAuth Gmail/Calendar inside the app (standard browser pop-ups — *this* is “normal,” not key paste).
-3. **Use:** SMS for ambient; desktop for confirm-first Gmail/Calendar actions. Cogis pays model + SMS costs; user pays Cogis (subscription / usage) — never pastes vendor keys.
-4. **Session posture:** Prefer short-lived task sessions, narrow *application-level* context, discard local task cache on done, always confirm irreversible actions. (See §3 on OAuth honesty.)
+1. **Pre-signup (optional / tightly capped):** Demo text only if we ever expose a public number. No Gmail/Calendar. Hard rate limits. Prefer *not* putting Cogis on the hook for uncapped free SMS (§5).
+2. **Signup:** Account + desktop install + login. **Twilio connect / provision happens here** as a first-class step (guided, in-flow — not a README scavenger hunt). OAuth Gmail/Calendar inside the app via normal browser pop-ups.
+3. **Use:** SMS for ambient; desktop for confirm-first actions. Variable SMS cost aims to sit on the user’s Twilio. Inference aims to stay cheap enough that Cogis isn’t a second subscription.
+4. **Session posture:** Short-lived task sessions, narrow application-level context, discard local task cache on done, always confirm irreversible actions. (Honest about OAuth limits — see §3.)
 
-### 2.3 Four pillars (from David’s draft — kept, with honesty notes)
+### 2.3 Four pillars (kept, with honesty notes)
 
-1. **Frictionless local install** — compiled Mac/Windows app; no terminal, no GitHub required for users.  
-2. **Just-in-time / ephemeral trust** — no permanent “act as me forever” product posture; confirm-first for send/write.  
-3. **Glass-box HUD** — side panel / widget; human-readable trail; work while it works.  
+1. **Frictionless local install** — compiled Mac/Windows app; no terminal, no GitHub required for users.
+2. **Just-in-time / ephemeral trust** — no permanent “act as me forever” posture; confirm-first for send/write.
+3. **Glass-box HUD** — side panel / widget; human-readable trail; work while it works.
 4. **Local secure enclave + nuke** — tokens in OS keychain; red-button kill of sessions/caches/network.
 
 ### 2.4 Explicitly out of MVP
 
-- Restaurant booking ops, phone trees, vendor WhatsApp last-mile (Instinct capital territory).  
-- Screen capture / computer-use takeover.  
-- Act-first silent send.  
-- Training on user mail/calendar by default (or ever without explicit opt-in — default is never).  
-- Developer-facing BYOK of any kind.
+- Restaurant booking ops, phone trees, vendor WhatsApp last-mile (capital territory for closed players).
+- Screen capture / computer-use takeover.
+- Act-first silent send.
+- Training on user mail/calendar by default (or ever without explicit opt-in — default is never).
+- DIY “paste your Twilio SID / LLM key” as the main path.
+- Positioning as “the Connect Gmail button they forgot.”
 
 ---
 
-## 3. Aria ↔ David: agreed vs disagreed
+## 3. Agreed vs pushbacks
 
 ### 3.1 Agreed (locked or strongly aligned)
 
 | Topic | Agreement |
 |-------|-----------|
-| New space | Not a clone of Instinct or a prettier OpenClaw README |
+| New space | Not a clone of a closed SMS agent; not a prettier OpenClaw README |
 | Install bar | Download / account / login only for normals |
 | Confirm-first | Draft → approve → execute for high-stakes |
 | Glass-box desktop | Required trust surface |
-| SMS required for public | Ambient channel; free trial text before full use |
+| SMS for public belief | Ambient channel; must feel normal |
 | Scratch push-via-app | Extra download = wrong friction |
-| Scratch BYOK entirely | No Twilio SID/token, no LLM API keys in the default path |
-| Cogis / Ephemeral Trust naming | Working brand + category phrase |
-| Gmail+Calendar wedge | First real loop; not “full life OS” |
-| Instinct valuation thesis | Soft tech moat; capital/polish/invite heat are the real advantages; trust is the attack surface |
+| Scratch DIY BYOK paste | No scavenger-hunt keys in the default path |
+| Twilio in signup | Embed connect/provision in signup to cut config pain |
+| Hosting-first economics | Chase burn down to hosting; low tolerance for another subscription |
+| Don’t out-compete frontier “Connect” UI | Open source + trust UX is the angle |
+| Gmail+Calendar as first workflow | Still the wedge *loop*, not the marketing claim |
+| Naming | Cogis / Ephemeral Trust as working brand + category |
+| PoC burn cap | $100/mo kill switch |
 
-### 3.2 Aria pushbacks (David should keep these as constraints)
+### 3.2 Pushbacks to keep as constraints
 
-| Topic | Aria pushback | Current resolution |
-|-------|---------------|-------------------|
-| Literal “5-minute OAuth only to Alex’s thread” | Google/Microsoft OAuth does not grant per-sender 5-min scopes. Marketing that claims otherwise is a trust landmine. | **Honest ephemeral trust:** short session + app-enforced scope + confirm + discard; copy must not fake IdP granularity |
-| Twilio BYOK for mass market | Harder than LLM keys; fails install bar | **Scratched entirely** (David) |
-| LLM key paste as unlock | Stretches non-techie bar | **Scratched;** Cogis-billed inference |
-| LiteLLM / Ollama as launch architecture | Smells like developer product | **Defer;** power features later if ever |
-| Competing on Instinct last-mile ops | Capital war we lose | **Stay narrow** on Gmail/Cal + confirm UX |
-| OpenClaw-as-the-product | Distribution yes, brand no for non-techies | Optional later skill path; **Cogis is the consumer product** |
+| Topic | Pushback | Current resolution |
+|-------|----------|-------------------|
+| Literal “5-minute OAuth only to Alex’s thread” | Google/Microsoft OAuth does not grant per-sender 5-min scopes. Overclaiming is a trust landmine. | **Honest ephemeral trust:** short session + app-enforced scope + confirm + discard; copy must not fake IdP granularity |
+| DIY Twilio / LLM key paste | Fails install bar for normals | **Embedded Twilio signup**; inference path still open but not paste-homework |
+| LiteLLM / Ollama as *required* launch architecture | Can smell like a developer product if it’s the only story | **Optional / later**; default path should still feel consumer |
+| Competing on last-mile ops / capital polish | We lose that war on purpose | **Stay narrow**; open-source the process |
+| OpenClaw-as-the-product | Fine as distribution later; wrong as the consumer brand | Optional skill path; **Cogis is the product** |
+| Hosted SMS + hosted LLM forever | Variable COGS explode on any GitHub spike; subscription fatigue is real | **Pivot:** Twilio on user via signup flow; Cogis burn → hosting (+ tiny PoC cap) |
 
-### 3.3 Still open (not locked)
+### 3.3 Still open
 
-See §8. Biggest forks: outbound always-human vs progressive allowlists; free-SMS abuse budget; Surveymatic vs separate Cogis brand; when (if ever) to open-source the core.
-
----
-
-## 4. Steelman — why Cogis could fail (read before go)
-
-Argue *against* Cogis as hard as Instinct’s board would:
-
-1. **Two-surface tax.** SMS + desktop means twice the product, compliance, and support. Instinct ships belief with one surface. Many users will never open the desktop → confirm-first collapses back into SMS yes/no theater, which is weak for long drafts.
-2. **SMS is a cost and abuse weapon.** Free pre-signup text is a gift to scrapers and LLM-junk traffic. One Hacker News / GitHub spike without auth gates can vaporize a month of budget overnight (§5).
-3. **Hosted inference = margin risk.** Confirm-first agents are chatty (plan, tool calls, drafts, rewrites). Sonnet-class pricing makes “unlimited assistant” suicidal without hard caps.
-4. **OAuth honesty gap.** If marketing overclaims JIT scopes, one security blogger can torch Ephemeral Trust the way Instinct’s ToS week torched them.
-5. **Desktop download friction still exists.** “Install a program” is easier than Docker — still harder than texting Instinct. Conversion funnel will leak.
-6. **Platform risk.** Apple iMessage routing, A2P 10DLC, Google OAuth policy, and carrier filtering can kneecap SMS agents without warning.
-7. **Category swallow.** OpenAI (Steinberger / personal agents), Anthropic, Google, and Cognition (Poke) can ship “good enough + trusted brand” and erase startups that only had a narrative.
-8. **“Open” expectation mismatch.** If Cogis trends on GitHub as open-source, the crowd will demand self-host + BYOK — which we just scratched for product reasons. Virality channel may fight product doctrine.
-9. **Capital asymmetry.** Instinct has ~$350M. They can buy trust fixes, human ops, and ads while Cogis is still wiring Twilio 10DLC.
-10. **Confirm-first feels slower.** Power users who loved Instinct’s aggression may call Cogis “clippy with extra steps” unless the HUD is *faster* than doing the task manually.
-
-**Steelman conclusion:** Cogis only wins if (a) trust is demonstrably better, (b) SMS demo is tightly capped, (c) desktop confirm is delightful and fast, and (d) unit economics are capped by product before marketing. Narrative alone is not a moat — that is exactly the critique of Instinct’s raise.
+See §8. Biggest forks: outbound policy; whether any Cogis-hosted free SMS exists at all; inference routing (local vs cheap hosted vs user-routed without paste theater); open-source boundary; go / park.
 
 ---
 
-## 5. Cost model — “what if this catches from GitHub?”
+## 4. Steelman — why Cogis could fail
 
-### 5.1 Critical distinction
+Argue against it hard:
 
-| Viral object | What it costs you |
-|--------------|-------------------|
-| **GitHub stars / clones** of an open repo | Mostly bandwidth + support attention. Cheap unless you also turn on free hosted SMS/LLM. |
-| **Active SMS users** texting Cogis | **Twilio + LLM** every message. This is the real burn. |
-| **Signed-up desktop users** with Gmail connected | LLM + occasional SMS notifications + light infra. |
+1. **Two-surface tax.** SMS + desktop = twice the product, compliance, and support. Many people never open the desktop → confirm-first collapses into SMS yes/no theater.
+2. **Twilio-in-signup still has friction.** Even embedded flows drop people (carrier, A2P, credit card on Twilio). “Not paste” ≠ “no friction.”
+3. **Hosting-only is aspirational until inference is solved.** Agents are chatty. If Cogis pays Sonnet-class turns, “no subscription” is fiction.
+4. **OAuth honesty gap.** Overclaim JIT scopes and one security write-up torches Ephemeral Trust.
+5. **Desktop download still leaks.** Easier than Docker; harder than texting a closed agent.
+6. **Platform risk.** iMessage routing, A2P 10DLC, Google OAuth policy, carrier filtering.
+7. **Category swallow.** Frontier labs and big chat products can ship “good enough + trusted brand” and erase narrative-only projects — especially on Connect Gmail/Calendar.
+8. **Open-source expectation mismatch.** GitHub crowd may demand full self-host + raw keys — which fights the consumer install bar.
+9. **Capital asymmetry is real.** Closed players can buy polish, ops, and ads. We are not in that race.
+10. **Confirm-first feels slower.** Unless the HUD is *faster* than doing the task manually, power users bounce.
 
-**GitHub popularity ≠ users.** Treat stars as marketing; treat **inbound SMS and agent turns** as the P&L.
-
-### 5.2 Unit cost assumptions (order-of-magnitude, US, Sep 2026)
-
-**SMS (Twilio-hosted by Cogis)**  
-- Base US long-code SMS: **~$0.0083** in + **~$0.0083** out per segment (Twilio published).  
-- Carrier pass-through often pushes **effective ~$0.012–$0.013** per segment.  
-- Budget planning number used below: **~$0.015 per segment** all-in (conservative).  
-- Number rental: ~$1.15/mo long code; toll-free ~$2.15/mo; 10DLC brand/campaign fees small monthly until scale.  
-- Long replies = multiple segments (160 chars / UCS-2 worse).
-
-**LLM (Claude Sonnet-class workhorse)**  
-- Planning figure: **~$3 / MTok input**, **~$15 / MTok output** (Sonnet 4.6 / Sonnet 5 standard band).  
-- Illustrative **agent turn** (read thread context + plan + draft reply): ~8k in + 1.5k out ≈ **$0.024 + $0.023 ≈ $0.05/turn**.  
-- Heavy turns (big threads, tools, multi-draft): **$0.15–$0.50+**.  
-- Planning blends below use **$0.08 average LLM cost per meaningful agent action** and **$0.02 per light SMS chat turn** (small context).
-
-**Infra**  
-- Auth, API, Twilio webhooks, desktop update CDN: start **~$50–300/mo**; not the spike risk.  
-- Spike risk = **variable SMS + LLM**.
-
-### 5.3 Scenario table (monthly) — hosted Cogis path
-
-Assumptions: free pre-signup SMS allowed; average free user sends **20 inbound + 20 outbound segments/mo** (~$0.60 SMS) + **10 light LLM turns** (~$0.20) ≈ **~$0.80/user/mo** fully free.  
-Signed-up active user: **40 SMS segments** (~$0.60) + **40 agent actions** (~$3.20) ≈ **~$3.80 COGS/user/mo** before margin.
-
-| Scenario | What happened | Free SMS users | Paid / signed-up actives | Rough monthly COGS (SMS+LLM) | Notes |
-|----------|---------------|----------------|---------------------------|------------------------------|-------|
-| A. Quiet pilot | You + 20 friends | 20 | 10 | **~$50–80** | Noise floor |
-| B. HN / Twitter blip | Landing page spike | 500 | 50 | **~$600** | Mostly free abuse + curious |
-| C. GitHub trending (dangerous) | README goes #1; bots discover public SMS number | 5,000 | 200 | **~$4.8k** | Free SMS is the firehose |
-| D. Real product-market blip | Organic + press | 2,000 | 1,000 | **~$5.4k** | Still fine if paid converts |
-| E. Instinct-adjacent viral | “Trust alternative” narrative | 20,000 | 5,000 | **~$35k** | Needs paid conversion **this week** or kill free SMS |
-| F. Meltdown | Uncapped free SMS + scrapers | 100,000 | 1,000 | **~$84k+** | Product failure, not success |
-
-**Formula to remember:**  
-`monthly_cogs ≈ (free_users × $0.80) + (paid_actives × $3.80)` under the assumptions above. Re-estimate when you have real telemetry.
-
-### 5.4 GitHub-specific warning
-
-If Cogis is **open-source on GitHub** and also offers a **public free SMS number**:
-- Stars drive curiosity texts → **your** Twilio/LLM bill.
-- Self-hosters who run their own stack do **not** cost you (good) — but they will demand BYOK (doctrine conflict).
-- Safest viral shape: **open the desktop client / protocol**; keep **SMS and inference behind account + spend caps**. Do not publish an uncapped public demo number in the README.
-
-### 5.5 Required cost controls (non-negotiable before public SMS)
-
-1. Per-phone daily/weekly SMS caps (free tier).  
-2. Per-account LLM budget hard stop.  
-3. Bot / carrier reputation filtering; STOP handling; 10DLC compliance.  
-4. Kill switch for free tier (feature flag).  
-5. Alerting: daily COGS vs budget (align with David’s broader spend discipline; Surveymatic GTM cap is separate — Cogis needs its **own** monthly burn cap before launch).  
-6. No tool-use / Gmail on free pre-signup path (already locked).
-
-### 5.6 Illustrative pricing (not locked — for economics only)
-
-To survive scenario E with margin: e.g. **$20–30/mo** subscription covering ~40 agent actions + SMS notifications, with overage. Free SMS demo: **≤10 messages lifetime** or **3 days**, then force signup. Exact price TBD; the point is **COGS must sit under price with headroom for support.**
+**Steelman conclusion:** Cogis only makes sense if (a) trust is visibly better, (b) signup actually embeds Twilio without homework, (c) Cogis burn stays near hosting under the $100 PoC cap, and (d) we stop pretending we can out-Connect frontier chat. Fun + open process is a valid reason to build — it’s not a moat by itself.
 
 ---
 
-## 6. Competitive map (living)
+## 5. Cost model — hosting first
 
-| | Instinct | OpenClaw | Cogis (target) |
-|--|----------|----------|----------------|
-| Onboarding | Text invite | CLI / Docker / keys | App install + account + login |
-| Channel | SMS / iMessage / calls | Many gateways | SMS + glass-box desktop |
-| Trust | Act-first, permanent access posture | User-configured | Confirm-first, ephemeral posture |
+### 5.1 What we’re optimizing for
+
+| Object | Who should pay |
+|--------|----------------|
+| GitHub stars / clones | Basically free (bandwidth / attention) |
+| SMS | **User’s Twilio** after embedded signup |
+| Agent turns / LLM | Prefer local or near-zero; avoid Cogis eating uncapped hosted inference |
+| Auth, updates, tiny API | **Cogis hosting** — the intended residual burn |
+
+**Target:** Cogis P&L looks like a small hosting bill, not a usage reseller. PoC kill switch: **$100/mo**.
+
+### 5.2 Old viral-SMS warning (still true if we host a public number)
+
+If Cogis ever exposes a **public free SMS number** paid by us, GitHub attention becomes a firehose on *our* Twilio + LLM. Prefer: no public uncapped demo number; or demo so tightly capped it can’t matter.
+
+Rough planning numbers (US, Sep 2026 order-of-magnitude) if *we* ever ate SMS+LLM again:
+- SMS all-in ~**$0.015**/segment
+- Meaningful agent action ~**$0.05–$0.15** at Sonnet-class rates
+- That path is exactly what the Sep 7 pivot is trying to **leave**
+
+### 5.3 Required controls before anything public
+
+1. No uncapped Cogis-paid free SMS.
+2. Per-account / per-phone caps if any demo path exists.
+3. Daily COGS alert vs the **$100/mo** PoC kill switch.
+4. 10DLC / STOP / abuse basics if SMS is on.
+5. Clear signup copy: Twilio account / billing is theirs; Cogis isn’t a silent SMS reseller.
+
+### 5.4 Pricing posture (not locked)
+
+Default aspiration: **no Cogis subscription** if hosting stays tiny. If inference forces a fee later, it should be honest usage or a tiny optional boost — not “another $20 AI sub.” Exact price TBD; economics must match the hosting-first story.
+
+---
+
+## 6. Competitive map (generic)
+
+| | Closed SMS / act-first agents | Developer OSS stacks | Cogis (target) |
+|--|-------------------------------|----------------------|----------------|
+| Onboarding | Text / invite | CLI / Docker / keys | App install + account + login |
+| Channel | SMS / chat apps | Many gateways | SMS + glass-box desktop |
+| Trust | Act-first, standing access | User-configured | Confirm-first, ephemeral posture |
 | Visibility | Black box | Logs / terminal | Glass-box HUD |
-| Keys | Hidden (they pay models) | BYOK culture | **Cogis pays models; no user keys** |
-| Capital | ~$350M | Foundation / community | Refinery bootstrap |
-| Weakness | Trust debt, ToS, valuation froth | Non-techie hostile | Two-surface cost, SMS burn, slower feel |
+| Keys / vendors | Hidden behind their bill | BYOK culture | Twilio embedded in signup; no DIY paste |
+| “Connect Gmail” | Table stakes / frontier UI | DIY OAuth | Same connectors — **not** the differentiator |
+| Capital | Large | Community | Bootstrap / hobby-serious |
+| Weakness | Trust debt | Non-techie hostile | Two-surface cost, Twilio signup drop-off, inference still open |
 
 ---
 
 ## 7. 90-day build sketch (decision-ready, not a backlog)
 
 **Days 0–30 — Doctrine + spine**  
-Threat model; action taxonomy (read / draft / send / calendar write); Twilio 10DLC; account auth; desktop shell with nuke + audit log UI; free-SMS caps designed **before** public number.
+Threat model; action taxonomy (read / draft / send / calendar write); Twilio embedded-signup spike; account auth; desktop shell with nuke + audit log; cost dashboard vs $100 cap.
 
 **Days 31–60 — MVP loop**  
-Gmail+Calendar OAuth; staging queue; SMS ↔ desktop “drafts ready”; confirm-first send/event create; COGS dashboard.
+Gmail+Calendar OAuth; staging queue; SMS ↔ desktop “drafts ready”; confirm-first send/event create; prove hosting-first bill in practice.
 
 **Days 61–90 — Proof**  
-5–10 design partners (privacy-conscious founders/ops); trust checklist published; side-by-side demo vs act-first failure modes; decide open-source boundary (client vs server vs neither).
+Handful of design partners; publish a plain-language trust checklist; decide open-source boundary (client vs server vs protocol); honest demo that doesn’t claim fake OAuth scopes.
 
-**Success criteria (pick ≥2):** zero silent outbound in pilot; free-SMS daily COGS never exceeds agreed cap; time-to-first-approved-send < 1 day; ≥1 external write-up on trust posture.
-
----
-
-## 8. Open questions for David (Desk)
-
-1. **Outbound policy:** Always human approve forever, or progressive allowlists after N clean confirms?  
-2. **Free SMS budget:** Lifetime message cap vs days vs both? What’s the hard monthly $ burn you’ll allow before kill switch?  
-3. **Brand:** Cogis.ai standalone vs Refinery-visible vs Surveymatic adjacency?  
-4. **Open-source boundary:** Closed; open client only; open core later — given GitHub virality cost dynamics?  
-5. **Go / no-go / park:** Ship the 90-day wedge, or stay Surveymatic-only until runway clearer?
+**Success criteria (pick ≥2):** zero silent outbound in pilot; Cogis monthly burn stays under $100; time-to-first-approved-send < 1 day after install; at least one external write-up on the trust posture / open process.
 
 ---
 
-## 9. Document changelog
+## 8. Open questions
+
+1. **Outbound policy:** Always human approve forever, or progressive allowlists after N clean confirms?
+2. **Any Cogis-hosted free SMS at all?** Or SMS only after Twilio-in-signup?
+3. **Inference path:** Local-first, cheap hosted under the $100 cap, or user-routed without paste theater — what’s the default for normals?
+4. **Brand:** Cogis.ai standalone vs Refinery-visible vs Surveymatic adjacency?
+5. **Open-source boundary:** Client only, protocol, full stack — what ships public first?
+6. **Go / park:** Run the 90-day wedge, or keep Cogis as a docs-and-spike lane while Surveymatic ships?
+
+---
+
+## 9. Changelog
 
 | Date | Change |
 |------|--------|
-| 2026-09-06 AM | Instinct overnight brief filed; Desk one-pager existed |
-| 2026-09-06 PM | David Cogis Ephemeral Trust draft; Aria agreed new space + install bar; pushed JIT OAuth honesty; deferred local-model toggles |
-| 2026-09-06 PM | Lock glass-box **and** SMS; scratch push-app; explore Twilio BYOK → **scratch BYOK entirely**; hosted SMS + Cogis-billed inference |
-| 2026-09-06 ~3:30 PM | **This living decision doc** created: agreements/pushbacks, steelman, GitHub/SMS cost model |
+| 2026-09-06 AM | Overnight strategy brief; early one-pager |
+| 2026-09-06 PM | Ephemeral Trust draft; glass-box + SMS lock; scratch push-app; scratch DIY BYOK; hosted SMS + billed inference (later revised) |
+| 2026-09-06 ~3:30 PM | First full decision doc: agreements, steelman, GitHub/SMS cost model |
+| 2026-09-07 AM | Renamed off “living”; parked in `docs/cogis-decision-doc.md` with sibling evolution notes |
+| 2026-09-07 ~10:20 AM | **Pivot:** don’t compete on Connect Gmail/Calendar vs frontier chat; open-source angle; Twilio embedded in signup; hosting-first costs + $100 PoC cap; strip personal voice and named closed competitors from the working doc |
 
 ---
 
-## 10. Aria maintenance rule
+## 10. Maintenance
 
-When David locks a new product decision on Cogis, Aria updates **§0 and §9** the same day, then syncs Desk. Do not let this rot into a second conflicting one-pager.
+When a product decision lands on Cogis, update **§0 and §9** the same day. Keep sibling `docs/` files as history — this file stays the current lock. Don’t let chat or a second one-pager diverge.
 
-*End of living document (v1).*
+*End of decision doc (v2 — Sep 7 pivot).*
