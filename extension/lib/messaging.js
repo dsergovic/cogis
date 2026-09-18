@@ -14,6 +14,8 @@ export const MSG = Object.freeze({
  * @property {string|null} dateIso
  * @property {string|null} deepLinkUrl
  * @property {boolean} prefillSupported
+ * @property {import('./relevance.js').Tier} [tier] assigned by relevance.js before the chunk is sent
+ * @property {object} [evidence] adapter-internal match metadata; stripped by relevance.js, never sent to the popup
  */
 
 /**
