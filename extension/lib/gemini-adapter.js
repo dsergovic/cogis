@@ -60,6 +60,7 @@ import {
   sendMessageWithInjectRetry,
   createHiddenTab,
   closeHiddenWindow,
+  openTabFailureMessage,
 } from './tab-messaging.js';
 import { retryOnce } from './retry.js';
 
@@ -170,8 +171,10 @@ export async function searchGemini(query) {
     tabId = hidden.tabId;
     windowId = hidden.windowId;
     await waitForTabComplete(tabId, TAB_COMPLETE_MS);
-  } catch {
-    return { status: 'unavailable', message: 'Could not open a Gemini tab.' };
+  } catch (err) {
+    // Surface Chrome's own reason — this used to be swallowed, which left
+    // a tab-open failure undiagnosable from the popup.
+    return { status: 'unavailable', message: openTabFailureMessage('Gemini', err) };
   }
 
   const timeout = new Promise((_, reject) => {

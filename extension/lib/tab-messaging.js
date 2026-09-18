@@ -58,15 +58,27 @@ export function sendMessageToTab(tabId, message) {
  * @returns {Promise<{ tabId: number, windowId: number }>}
  */
 export async function createHiddenTab(url) {
-  const win = await chrome.windows.create({
-    url,
-    type: 'popup',
-    focused: false,
-    left: -32000,
-    top: -32000,
-    width: 400,
-    height: 300,
-  });
+  let win;
+  try {
+    win = await chrome.windows.create({
+      url,
+      type: 'popup',
+      focused: false,
+      left: -32000,
+      top: -32000,
+      width: 400,
+      height: 300,
+    });
+  } catch {
+    // Chrome can reject bounds that aren't mostly on a visible display
+    // ("Bounds must be at least 50% within visible screen space"). Both
+    // tab-driven labs started failing with "Could not open a ... tab" after
+    // the 2026-09-10 update to Chrome 152, with no change to this file since
+    // it last worked. Minimized is the next-least-visible option; it can't
+    // be combined with explicit bounds, and may flash briefly before
+    // collapsing, which is why it's the fallback rather than the default.
+    win = await chrome.windows.create({ url, type: 'popup', focused: false, state: 'minimized' });
+  }
   const tabId = win.tabs?.[0]?.id;
   if (typeof tabId !== 'number' || typeof win.id !== 'number') {
     // The window was created but its tab id never showed up — close it
@@ -107,4 +119,19 @@ export async function sendMessageWithInjectRetry(tabId, message, contentScriptFi
     await chrome.scripting.executeScript({ target: { tabId }, files: [contentScriptFile] });
     return sendMessageToTab(tabId, message);
   }
+}
+
+/**
+ * Popup copy for a lab tab that couldn't be opened, carrying Chrome's own
+ * error text when there is one so the failure can be diagnosed without a
+ * service-worker console.
+ * @param {string} labLabel e.g. 'Perplexity'
+ * @param {unknown} err
+ * @returns {string}
+ */
+export function openTabFailureMessage(labLabel, err) {
+  const reason = typeof err?.message === 'string' ? err.message.trim() : '';
+  return reason
+    ? `Could not open a ${labLabel} tab (${reason}).`
+    : `Could not open a ${labLabel} tab.`;
 }

@@ -13,6 +13,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   are shown under a collapsed "Unverified matches" group rather than dropped.
 - `lib/query.js` (phrase/term parsing, stopwords) and `lib/relevance.js`
   (match-evidence scoring), with unit coverage built from live payload shapes.
+- `cogis.ai` landing page (`web/`) and its GitHub Pages workflow. The site
+  had been frozen since 2026-08-01 as the old in-page search surface, whose
+  extension-side bridge was removed in the 2026-08-21 restart, so it told
+  every visitor to install an extension they may already have. It is now a
+  static page: what Cogis does, the five supported labs, search tips, the
+  privacy rules, and install steps linking to GitHub.
 ### Changed
 - Search results are now filtered on the match metadata each lab already
   returns — Grok's matched words, Claude's title ranges and semantic
@@ -22,6 +28,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   that actually contain "github".
 - Quote characters are stripped from the string sent to each lab, and a
   quoted search now highlights the phrase itself on arrival via text fragment.
+### Fixed
+- Perplexity and Gemini failing with "Could not open a … tab". Their hidden
+  search window is created fully off-screen, which Chrome can reject; this
+  began after the 2026-09-10 update to Chrome 152. A rejected off-screen
+  create now falls back to a minimized window, and the popup shows Chrome's
+  own error text instead of swallowing it.
 ### Notes
 - No change to the privacy model: scoring uses match metadata only, never
   message bodies, and the metadata is stripped before results reach the UI.
