@@ -65,11 +65,23 @@ export function normalizeClaudeHit(raw) {
   if (!conversation) return null;
 
   const uuid = typeof conversation.uuid === 'string' ? conversation.uuid : null;
-  const title =
-    typeof conversation.name === 'string' && conversation.name.trim()
-      ? conversation.name.trim()
-      : null;
+  const rawName = typeof conversation.name === 'string' ? conversation.name : '';
+  const title = rawName.trim() ? rawName.trim() : null;
   if (!uuid || !title) return null;
+
+  // `title_matches` is a list of {start,end} character ranges into the
+  // untrimmed conversation name — slice it to recover the words that actually
+  // matched. An empty list is meaningful (the title matched nothing), which is
+  // why it stays an array rather than becoming null.
+  const matchedWords = Array.isArray(safe.title_matches)
+    ? safe.title_matches
+        .map((m) =>
+          typeof m?.start === 'number' && typeof m?.end === 'number'
+            ? rawName.slice(m.start, m.end)
+            : '',
+        )
+        .filter(Boolean)
+    : [];
 
   const pointer = {
     platform: 'claude',
@@ -77,6 +89,15 @@ export function normalizeClaudeHit(raw) {
     dateIso: anyDateToIso(conversation.updated_at),
     deepLinkUrl: claudeDeepLink(uuid),
     prefillSupported: false,
+    // Scoring metadata only — stripped in relevance.js before render, and
+    // never body text. `matched_snippet` came back empty on every row of the
+    // live probe anyway, so there is nothing here to be tempted by.
+    evidence: {
+      matchedWords,
+      semanticDistance: typeof safe.semantic_distance === 'number' ? safe.semantic_distance : null,
+      semanticRank: typeof safe.semantic_rank === 'number' ? safe.semantic_rank : null,
+      sources: Array.isArray(safe.sources) ? safe.sources.filter((s) => typeof s === 'string') : [],
+    },
   };
 
   if (pointerHasForbiddenFields(pointer)) return null;

@@ -30,6 +30,7 @@ describe('normalizeChatgptHit', () => {
       dateIso: new Date(1700000000 * 1000).toISOString(),
       deepLinkUrl: 'https://chatgpt.com/c/conv-1',
       prefillSupported: false,
+      evidence: { matchKind: 'title' },
     });
   });
 

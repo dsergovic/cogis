@@ -1,6 +1,7 @@
 import { MSG, createSearchRequest, shouldApplyChunk, normalizeQuery } from '../lib/messaging.js';
 import { PLATFORM_ORDER, getPlatform, FOOTNOTE_TEXT, loginRequiredCopy } from '../lib/platforms.js';
 import { resolveResultHref, truncateTitle } from '../lib/results.js';
+import { parseQuery, highlightTarget } from '../lib/query.js';
 import { POPUP_WATCHDOG_MS } from '../lib/timeouts.js';
 import { perplexityPrefillUrl } from '../lib/perplexity-adapter.js';
 import {
@@ -28,6 +29,8 @@ const appHeader = document.getElementById('app-header');
 
 let activeRequestId = null;
 let activeQuery = '';
+/** Parsed form of `activeQuery` — phrases and terms, for link highlighting. */
+let activeParsed = null;
 let watchdogTimer = null;
 /** @type {Record<string, { status: string, results: import('../lib/messaging.js').PointerRecord[], message?: string, loginUrl?: string }>} */
 let groups = {};
@@ -50,6 +53,41 @@ function resetGroups(status) {
   for (const platformId of enabledPlatformIds()) {
     groups[platformId] = { status, results: [] };
   }
+}
+
+/**
+ * Build the `<ul>` of result links for one tier of one platform's hits.
+ * @param {import('../lib/messaging.js').PointerRecord[]} hits
+ * @param {string} platformId
+ * @param {import('../lib/platforms.js').PlatformDef|null} platform
+ */
+function buildResultList(hits, platformId, platform) {
+  const list = document.createElement('ul');
+  for (const hit of hits) {
+    const li = document.createElement('li');
+    const a = document.createElement('a');
+    const prefillUrl = PREFILL_BUILDERS[platformId]?.(activeParsed?.bare ?? activeQuery) ?? null;
+    // Highlight the quoted phrase itself when there is one, so arriving on the
+    // page scrolls to the phrase rather than to a stray quote character.
+    a.href = resolveResultHref(
+      hit,
+      prefillUrl,
+      platform?.origin ?? '#',
+      activeParsed ? highlightTarget(activeParsed) : activeQuery,
+    );
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.title = hit.title;
+    a.textContent = truncateTitle(hit.title);
+    const extIcon = document.createElement('span');
+    extIcon.className = 'ext-icon';
+    extIcon.setAttribute('aria-hidden', 'true');
+    extIcon.textContent = ' ↗';
+    a.appendChild(extIcon);
+    li.appendChild(a);
+    list.appendChild(li);
+  }
+  return list;
 }
 
 function render() {
@@ -159,25 +197,36 @@ function render() {
       note.textContent = 'No results.';
       content.appendChild(note);
     } else if (group.status === 'ready') {
-      const list = document.createElement('ul');
-      for (const hit of group.results) {
-        const li = document.createElement('li');
-        const a = document.createElement('a');
-        const prefillUrl = PREFILL_BUILDERS[platformId]?.(activeQuery) ?? null;
-        a.href = resolveResultHref(hit, prefillUrl, platform?.origin ?? '#', activeQuery);
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-        a.title = hit.title;
-        a.textContent = truncateTitle(hit.title);
-        const extIcon = document.createElement('span');
-        extIcon.className = 'ext-icon';
-        extIcon.setAttribute('aria-hidden', 'true');
-        extIcon.textContent = ' ↗';
-        a.appendChild(extIcon);
-        li.appendChild(a);
-        list.appendChild(li);
+      // A quoted search can only be *verified* against the title — body text
+      // never reaches the popup. Hits the lab claims for the phrase but Cogis
+      // can't confirm are kept, just held back in a collapsed block so the
+      // top of the list stays trustworthy.
+      const verified = group.results.filter((hit) => hit.tier !== 'unverified');
+      const unverified = group.results.filter((hit) => hit.tier === 'unverified');
+
+      if (verified.length) {
+        content.appendChild(buildResultList(verified, platformId, platform));
       }
-      content.appendChild(list);
+
+      if (unverified.length) {
+        const details = document.createElement('details');
+        details.className = 'unverified';
+        // Nothing confirmed? Open it, rather than showing an empty group with
+        // a closed drawer under it.
+        details.open = verified.length === 0;
+
+        const summary = document.createElement('summary');
+        summary.textContent = `Unverified matches (${unverified.length})`;
+        details.appendChild(summary);
+
+        const note = document.createElement('p');
+        note.className = 'unverified-note';
+        note.textContent = `${platform?.label ?? platformId} matched these inside the conversation, where Cogis can't confirm the exact phrase.`;
+        details.appendChild(note);
+
+        details.appendChild(buildResultList(unverified, platformId, platform));
+        content.appendChild(details);
+      }
     }
 
     section.appendChild(content);
@@ -196,6 +245,7 @@ function startSearch(query) {
   const requestId = crypto.randomUUID();
   activeRequestId = requestId;
   activeQuery = query;
+  activeParsed = parseQuery(query);
   collapsedPlatforms.clear();
   document.body.classList.add('has-searched');
   closeSettingsPanel();

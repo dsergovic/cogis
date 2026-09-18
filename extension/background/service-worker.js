@@ -1,6 +1,8 @@
 import { MSG, createResultChunk, createPlatformDone } from '../lib/messaging.js';
 import { PLATFORM_ORDER } from '../lib/platforms.js';
 import { createRequestTracker, OVERALL_WALL_MS } from '../lib/timeouts.js';
+import { parseQuery } from '../lib/query.js';
+import { filterPointers } from '../lib/relevance.js';
 import { searchChatgpt } from '../lib/chatgpt-adapter.js';
 import { searchClaude } from '../lib/claude-adapter.js';
 import { searchPerplexity } from '../lib/perplexity-adapter.js';
@@ -72,17 +74,35 @@ const ADAPTERS = {
 /**
  * Runs one platform's search and reports back to the popup via runtime
  * messages. Platforms without an adapter yet report `unavailable`.
+ *
+ * Labs are sent `parsed.bare` — the query with its quote characters removed.
+ * Every lab was verified on 2026-09-17 to ignore phrase syntax entirely
+ * (identical result sets quoted and unquoted), and the two tab-driven
+ * adapters type the string into a real search box, where a stray quote is
+ * noise at best. Quoted-phrase semantics are enforced here instead, in
+ * `filterPointers`.
  * @param {string} requestId
- * @param {string} query
+ * @param {import('../lib/query.js').ParsedQuery} parsed
  * @param {string} platformId
  */
-async function runPlatform(requestId, query, platformId) {
+async function runPlatform(requestId, parsed, platformId) {
   if (!tracker.isActive(requestId)) return;
 
   const adapter = ADAPTERS[platformId];
   const outcome = adapter
-    ? await adapter(query)
+    ? await adapter(parsed.bare)
     : { status: 'unavailable', message: `${platformId} adapter not implemented yet` };
+
+  let status = outcome.status;
+  let results = outcome.results;
+
+  if (status === 'ready' && Array.isArray(results)) {
+    const { kept } = filterPointers(results, parsed);
+    results = kept;
+    // Everything the lab returned was demonstrably weak — that's "no results",
+    // not an empty `ready` group rendering as a blank list.
+    if (!kept.length) status = 'empty';
+  }
 
   if (!tracker.isActive(requestId)) return;
   chrome.runtime
@@ -90,8 +110,8 @@ async function runPlatform(requestId, query, platformId) {
       createResultChunk({
         requestId,
         platform: platformId,
-        status: outcome.status,
-        results: outcome.results,
+        status,
+        results,
         message: outcome.message,
         loginUrl: outcome.loginUrl,
       }),
@@ -100,7 +120,7 @@ async function runPlatform(requestId, query, platformId) {
 
   if (!tracker.isActive(requestId)) return;
   chrome.runtime
-    .sendMessage(createPlatformDone({ requestId, platform: platformId, status: outcome.status }))
+    .sendMessage(createPlatformDone({ requestId, platform: platformId, status }))
     .catch(() => {});
 }
 
@@ -113,7 +133,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === MSG.SEARCH_REQUEST) {
     const requestId = message.requestId;
-    const query = message.query;
+    const parsed = parseQuery(message.query);
     const platforms =
       Array.isArray(message.platforms) && message.platforms.length
         ? message.platforms
@@ -124,7 +144,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       tracker.cancel(requestId);
     }, OVERALL_WALL_MS);
 
-    Promise.all(platforms.map((platformId) => runPlatform(requestId, query, platformId))).finally(
+    Promise.all(platforms.map((platformId) => runPlatform(requestId, parsed, platformId))).finally(
       () => clearTimeout(wallTimer),
     );
 

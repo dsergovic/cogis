@@ -36,7 +36,18 @@ describe('normalizeGrokHit', () => {
       dateIso: '2026-08-14T19:45:44.794Z',
       deepLinkUrl: 'https://grok.com/c/aa984215-4c18-48bd-b3b1-7a1b169f8a32',
       prefillSupported: false,
+      evidence: { matchedWords: ['stripe'], matchKind: 'content' },
     });
+  });
+
+  it('keeps the query words it matched but never the body highlight', () => {
+    const hit = normalizeGrokHit({
+      ...baseMatch,
+      matchedWords: ['vs'],
+      matchType: 'MATCH_MESSAGE',
+    });
+    expect(hit.evidence).toEqual({ matchedWords: ['vs'], matchKind: 'content' });
+    expect(JSON.stringify(hit)).not.toContain('message body snippet content');
   });
 
   it('falls back to createTime when modifyTime is missing', () => {

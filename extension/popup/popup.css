@@ -265,3 +265,41 @@ body.has-searched header h1 {
   font-size: 13px;
   color: var(--fg-muted);
 }
+
+/* Demoted results: hits a lab claims for a quoted phrase that Cogis can't
+   confirm, because verification stops at the title — body text never reaches
+   the popup. Collapsed by default so the verified list reads first, styled
+   quieter than a normal group, but never hidden outright. */
+.unverified {
+  margin-top: 10px;
+}
+
+.unverified > summary {
+  font-size: 13px;
+  color: var(--fg-muted);
+  cursor: pointer;
+  list-style: none;
+}
+
+.unverified > summary::-webkit-details-marker {
+  display: none;
+}
+
+.unverified > summary::before {
+  content: '▸ ';
+}
+
+.unverified[open] > summary::before {
+  content: '▾ ';
+}
+
+.unverified > summary:hover,
+.unverified > summary:focus-visible {
+  color: var(--fg);
+}
+
+.unverified-note {
+  font-size: 12px;
+  color: var(--fg-muted);
+  margin: 6px 0 0;
+}

@@ -71,6 +71,12 @@ export function normalizeChatgptHit(raw) {
     dateIso: anyDateToIso(safe.update_time),
     deepLinkUrl: chatgptDeepLink(conversationId),
     prefillSupported: false,
+    // ChatGPT only says title-side or content-side, with no per-word detail —
+    // enough to mark the hit as lexically grounded, not enough to verify a
+    // phrase. Its result sets were already tight in the live probe (5, not 60).
+    evidence: {
+      matchKind: typeof safe.match_kind === 'string' ? safe.match_kind : null,
+    },
   };
 
   if (pointerHasForbiddenFields(pointer)) return null;
