@@ -13,6 +13,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   are shown under a collapsed "Unverified matches" group rather than dropped.
 - `lib/query.js` (phrase/term parsing, stopwords) and `lib/relevance.js`
   (match-evidence scoring), with unit coverage built from live payload shapes.
+- `cogis.ai` landing page (`web/`) and its GitHub Pages workflow. The site
+  had been frozen since 2026-08-01 as the old in-page search surface, whose
+  extension-side bridge was removed in the 2026-08-21 restart, so it told
+  every visitor to install an extension they may already have. It is now a
+  static page: what Cogis does, the five supported labs, search tips, the
+  privacy rules, and install steps linking to GitHub.
 ### Changed
 - Search results are now filtered on the match metadata each lab already
   returns — Grok's matched words, Claude's title ranges and semantic
