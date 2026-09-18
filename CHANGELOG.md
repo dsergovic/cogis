@@ -28,6 +28,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   that actually contain "github".
 - Quote characters are stripped from the string sent to each lab, and a
   quoted search now highlights the phrase itself on arrival via text fragment.
+### Fixed
+- Perplexity and Gemini failing with "Could not open a … tab". Their hidden
+  search window is created fully off-screen, which Chrome can reject; this
+  began after the 2026-09-10 update to Chrome 152. A rejected off-screen
+  create now falls back to a minimized window, and the popup shows Chrome's
+  own error text instead of swallowing it.
 ### Notes
 - No change to the privacy model: scoring uses match metadata only, never
   message bodies, and the metadata is stripped before results reach the UI.

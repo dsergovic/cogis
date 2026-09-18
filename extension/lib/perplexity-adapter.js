@@ -61,6 +61,7 @@ import {
   sendMessageWithInjectRetry,
   createHiddenTab,
   closeHiddenWindow,
+  openTabFailureMessage,
 } from './tab-messaging.js';
 import { retryOnce } from './retry.js';
 
@@ -149,8 +150,10 @@ export async function searchPerplexity(query) {
   let tabInfo;
   try {
     tabInfo = await ensurePerplexityTab();
-  } catch {
-    return { status: 'unavailable', message: 'Could not open a Perplexity tab.' };
+  } catch (err) {
+    // Surface Chrome's own reason — this used to be swallowed, which left
+    // a tab-open failure undiagnosable from the popup.
+    return { status: 'unavailable', message: openTabFailureMessage('Perplexity', err) };
   }
 
   const timeout = new Promise((_, reject) => {
