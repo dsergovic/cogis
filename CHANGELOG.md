@@ -5,6 +5,28 @@ All notable changes to Cogis are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- Quoted-phrase search (`"exact phrase"`). Enforced by Cogis: all three
+  API-driven labs were verified live to ignore quote syntax and return
+  identical results quoted or not. A phrase is verified against conversation
+  titles — the only text Cogis holds — and matches a lab claims inside a body
+  are shown under a collapsed "Unverified matches" group rather than dropped.
+- `lib/query.js` (phrase/term parsing, stopwords) and `lib/relevance.js`
+  (match-evidence scoring), with unit coverage built from live payload shapes.
+### Changed
+- Search results are now filtered on the match metadata each lab already
+  returns — Grok's matched words, Claude's title ranges and semantic
+  distance, ChatGPT's match kind — dropping results that matched only a
+  stopword and distant semantic neighbors. Replaying the live `devops vs
+  github` payloads: Claude 20 results → 3, Grok's returned page → the hits
+  that actually contain "github".
+- Quote characters are stripped from the string sent to each lab, and a
+  quoted search now highlights the phrase itself on arrival via text fragment.
+### Notes
+- No change to the privacy model: scoring uses match metadata only, never
+  message bodies, and the metadata is stripped before results reach the UI.
+
+Authors: David Sergovic, Claude Opus 5
 
 ## 2026-09-16
 ### Added

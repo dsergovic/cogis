@@ -87,6 +87,16 @@ export function normalizeGrokHit(raw) {
     dateIso: anyDateToIso(conversation.modifyTime) ?? anyDateToIso(conversation.createTime),
     deepLinkUrl: grokDeepLink(conversationId),
     prefillSupported: false,
+    // `matchedWords` is the query's own words echoed back, never body text —
+    // `highlight` is the body snippet and stays out of here, as documented
+    // above. This is the strongest evidence any lab gives us: the live probe
+    // had 60 results where most reported `["vs"]` and nothing else.
+    evidence: {
+      matchedWords: Array.isArray(safe.matchedWords)
+        ? safe.matchedWords.filter((w) => typeof w === 'string')
+        : null,
+      matchKind: /TITLE/i.test(String(safe.matchType ?? '')) ? 'title' : 'content',
+    },
   };
 
   if (pointerHasForbiddenFields(pointer)) return null;

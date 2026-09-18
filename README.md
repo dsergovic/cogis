@@ -26,16 +26,40 @@ Early rebuild. See [Issues](https://github.com/dsergovic/cogis/issues) for what'
 
 **Full-text means the lab's own search, not ours.** ChatGPT, Claude,
 Perplexity, Gemini, and Grok all run genuine search over message bodies,
-not just titles — Cogis just relays whatever the lab's own search returns; it never
-reads, ranks, or re-filters conversation content itself. Two things follow
-from that: results can match on body text — or, confirmed live for Claude,
-the content of an attached file — that doesn't appear anywhere in the title
-shown, and a multi-word query may be matched per-word (OR) rather
-than as an exact phrase, depending on how that lab's search works. That's
-the lab's relevance behavior, not a Cogis bug. Gemini goes further still —
-its search is semantic, not keyword-based, so it can return "relevant"
-results for a query with no literal word overlap at all, and will rarely if
-ever report zero results for an account with any chat history.
+not just titles — Cogis relays what the lab's own search returns and never
+reads conversation content itself. Results can therefore match on body text
+— or, confirmed live for Claude, the content of an attached file — that
+doesn't appear anywhere in the title shown.
+
+**Cogis does re-rank and filter, using match metadata only.** Left alone,
+the labs OR a query's words together and a single common word carries a
+match: probed live on 2026-09-17, `devops vs github` returned 60 Grok
+conversations, most matching nothing but the word "vs", and 25 from Claude
+including several `<x> vs <y>` titles about coffee and smoke detectors.
+Every lab also returns metadata saying _why_ a conversation matched — Grok
+names the query words it matched, Claude gives title character ranges and a
+semantic distance, ChatGPT says title- or content-side — so Cogis drops
+results it can show are weak: those matching only stopwords, and distant
+semantic neighbors. None of that metadata is body text, so this costs
+nothing against the no-retention rule above. A lab that reports a body
+match without saying which word matched is kept, not dropped — unprovable
+is not the same as bad.
+
+**Quoted phrases are enforced by Cogis, not the labs.** All three
+API-driven labs were verified to ignore quote syntax outright, returning
+byte-identical results for `devops vs github` and `"devops vs github"`. So
+`"exact phrase"` is parsed here instead. Because pointer records hold only
+the title, a phrase can only be _verified_ against a conversation title;
+hits a lab claims for the phrase inside a body Cogis can't see are still
+shown, grouped under a collapsed **Unverified matches** heading rather than
+being dropped or silently promoted.
+
+Gemini is the loosest of the five — its search is semantic, not
+keyword-based, so it can return "relevant" results with no literal word
+overlap at all, and will rarely if ever report zero results for an account
+with any chat history. It and Perplexity are scraped from the rendered page
+rather than an API, so neither reports match metadata and the filtering
+above has little to work with there.
 
 ChatGPT, Claude, Grok, and Perplexity all expose an API their own official
 web app calls, reachable straight from the extension's background. Perplexity's
